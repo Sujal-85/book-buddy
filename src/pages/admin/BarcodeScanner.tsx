@@ -66,10 +66,10 @@ const BarcodeScanner: React.FC = () => {
       <div className="flex-1 overflow-y-auto space-y-6">
         {/* Mode Selection */}
         <div className="flex gap-3">
-          <LibButton variant={mode === 'camera' ? 'primary' : 'outline'} onClick={startCamera} className="flex items-center gap-2">
+          <LibButton variant={mode === 'camera' ? 'primary' : 'ghost'} onClick={startCamera} className="flex items-center gap-2">
             <Camera className="h-4 w-4" /> Camera Scan
           </LibButton>
-          <LibButton variant={mode === 'manual' ? 'primary' : 'outline'} onClick={() => setMode('manual')} className="flex items-center gap-2">
+          <LibButton variant={mode === 'manual' ? 'primary' : 'ghost'} onClick={() => setMode('manual')} className="flex items-center gap-2">
             <Keyboard className="h-4 w-4" /> Manual Entry
           </LibButton>
         </div>
