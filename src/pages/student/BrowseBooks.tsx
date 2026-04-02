@@ -50,7 +50,7 @@ const BrowseBooks: React.FC = () => {
 
       <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
         {/* Filters Sidebar */}
-        <div className="w-full lg:w-56 shrink-0 space-y-4 lg:overflow-y-auto">
+        <div className="w-full lg:w-56 shrink-0 space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
