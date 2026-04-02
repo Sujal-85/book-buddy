@@ -19,6 +19,16 @@ import IssueBook from "@/pages/admin/IssueBook";
 import ReturnBook from "@/pages/admin/ReturnBook";
 import Overdue from "@/pages/admin/Overdue";
 import AdminSettings from "@/pages/admin/Settings";
+import BarcodeScanner from "@/pages/admin/BarcodeScanner";
+import AIAnalytics from "@/pages/admin/AIAnalytics";
+import DamageDetection from "@/pages/admin/DamageDetection";
+import FineCalculator from "@/pages/admin/FineCalculator";
+import AICataloging from "@/pages/admin/AICataloging";
+import BulkImport from "@/pages/admin/BulkImport";
+import StudentAnalytics from "@/pages/admin/StudentAnalytics";
+import SmartNotifications from "@/pages/admin/SmartNotifications";
+import AIReports from "@/pages/admin/AIReports";
+import ShelfManagement from "@/pages/admin/ShelfManagement";
 
 // Student Pages
 import StudentHome from "@/pages/student/Home";
@@ -26,6 +36,16 @@ import BrowseBooks from "@/pages/student/BrowseBooks";
 import MyBooks from "@/pages/student/MyBooks";
 import BorrowHistory from "@/pages/student/History";
 import StudentProfile from "@/pages/student/Profile";
+import AIRecommendations from "@/pages/student/AIRecommendations";
+import VoiceSearch from "@/pages/student/VoiceSearch";
+import ReadingGoals from "@/pages/student/ReadingGoals";
+import StudyCompanion from "@/pages/student/StudyCompanion";
+import BookReviews from "@/pages/student/BookReviews";
+import Wishlist from "@/pages/student/Wishlist";
+import QRBorrow from "@/pages/student/QRBorrow";
+import ReadingStats from "@/pages/student/ReadingStats";
+import AvailabilityAlerts from "@/pages/student/AvailabilityAlerts";
+import AISummary from "@/pages/student/AISummary";
 
 import NotFound from "@/pages/NotFound";
 import Index from "@/pages/Index";
@@ -58,6 +78,16 @@ const App = () => (
               <Route path="return" element={<ReturnBook />} />
               <Route path="overdue" element={<Overdue />} />
               <Route path="settings" element={<AdminSettings />} />
+              <Route path="scanner" element={<BarcodeScanner />} />
+              <Route path="analytics" element={<AIAnalytics />} />
+              <Route path="damage" element={<DamageDetection />} />
+              <Route path="fines" element={<FineCalculator />} />
+              <Route path="cataloging" element={<AICataloging />} />
+              <Route path="import" element={<BulkImport />} />
+              <Route path="student-analytics" element={<StudentAnalytics />} />
+              <Route path="notifications" element={<SmartNotifications />} />
+              <Route path="reports" element={<AIReports />} />
+              <Route path="shelves" element={<ShelfManagement />} />
             </Route>
 
             {/* Student Routes */}
@@ -67,6 +97,16 @@ const App = () => (
               <Route path="mybooks" element={<MyBooks />} />
               <Route path="history" element={<BorrowHistory />} />
               <Route path="profile" element={<StudentProfile />} />
+              <Route path="recommendations" element={<AIRecommendations />} />
+              <Route path="voice-search" element={<VoiceSearch />} />
+              <Route path="goals" element={<ReadingGoals />} />
+              <Route path="companion" element={<StudyCompanion />} />
+              <Route path="reviews" element={<BookReviews />} />
+              <Route path="wishlist" element={<Wishlist />} />
+              <Route path="qr-borrow" element={<QRBorrow />} />
+              <Route path="stats" element={<ReadingStats />} />
+              <Route path="alerts" element={<AvailabilityAlerts />} />
+              <Route path="summary" element={<AISummary />} />
             </Route>
 
             {/* Landing page */}
