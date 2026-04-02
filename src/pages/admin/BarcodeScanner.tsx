@@ -153,7 +153,7 @@ const BarcodeScanner: React.FC = () => {
               <LibButton onClick={handleAddBook} className="flex items-center gap-2">
                 <Plus className="h-4 w-4" /> Add to Catalog
               </LibButton>
-              <LibButton variant="outline" onClick={handleIssueBook} className="flex items-center gap-2">
+              <LibButton variant="ghost" onClick={handleIssueBook} className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4" /> Issue This Book
               </LibButton>
             </div>

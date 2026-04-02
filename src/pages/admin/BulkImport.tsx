@@ -49,7 +49,7 @@ const BulkImport: React.FC = () => {
                 </div>
               )}
             </div>
-            <LibButton variant="outline" size="sm" className="w-full flex items-center gap-2 justify-center"><Download className="h-4 w-4" /> Download Template</LibButton>
+            <LibButton variant="ghost" size="sm" className="w-full flex items-center gap-2 justify-center"><Download className="h-4 w-4" /> Download Template</LibButton>
           </LibCard>
 
           {/* Export */}
@@ -57,7 +57,7 @@ const BulkImport: React.FC = () => {
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Download className="h-4 w-4 text-accent" /> Export Catalog</h3>
             <div className="space-y-3">
               {['Full Catalog (37,419 books)', 'Available Books Only', 'Issued Books Only', 'Overdue Records', 'Member Directory'].map((item) => (
-                <LibButton key={item} variant="outline" className="w-full justify-start text-left" size="sm" onClick={() => toast.success(`Exporting: ${item}`)}>
+                <LibButton key={item} variant="ghost" className="w-full justify-start text-left" size="sm" onClick={() => toast.success(`Exporting: ${item}`)}>
                   <FileSpreadsheet className="h-4 w-4 mr-2" /> {item}
                 </LibButton>
               ))}

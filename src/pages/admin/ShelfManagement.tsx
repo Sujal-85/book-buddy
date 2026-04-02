@@ -49,7 +49,7 @@ const ShelfManagement: React.FC = () => (
       <LibCard>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><RefreshCw className="h-4 w-4 text-accent" /> AI Relocation Suggestions</h3>
-          <LibButton size="sm" variant="outline" onClick={() => toast.success('Applying all relocations...')}>Apply All</LibButton>
+          <LibButton size="sm" variant="ghost" onClick={() => toast.success('Applying all relocations...')}>Apply All</LibButton>
         </div>
         <div className="space-y-3">
           {relocations.map((r) => (

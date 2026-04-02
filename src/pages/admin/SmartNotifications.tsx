@@ -53,7 +53,7 @@ const SmartNotifications: React.FC = () => {
               <LibButton onClick={() => { setSendingBroadcast(true); setTimeout(() => { setSendingBroadcast(false); toast.success('Broadcast sent!'); }, 1500); }} disabled={sendingBroadcast}>
                 {sendingBroadcast ? 'Sending...' : 'Send to All Students'}
               </LibButton>
-              <LibButton variant="outline">Schedule</LibButton>
+              <LibButton variant="ghost">Schedule</LibButton>
             </div>
           </div>
         </LibCard>

@@ -73,7 +73,7 @@ const FineCalculator: React.FC = () => {
               <div className="flex items-center gap-3">
                 <LibBadge variant="issued">{b.daysOverdue} days overdue</LibBadge>
                 <p className="text-lg font-bold text-red-500">₹{b.fine}</p>
-                <LibButton size="sm" variant="outline">Collect</LibButton>
+                <LibButton size="sm" variant="ghost">Collect</LibButton>
               </div>
             </LibCard>
           ))}

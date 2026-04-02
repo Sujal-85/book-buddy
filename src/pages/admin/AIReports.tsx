@@ -58,7 +58,7 @@ const AIReports: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <LibBadge>{r.type}</LibBadge>
-                  <LibButton size="sm" variant="outline" onClick={() => toast.success('Downloading...')} className="flex items-center gap-1"><Download className="h-3 w-3" /> PDF</LibButton>
+                  <LibButton size="sm" variant="ghost" onClick={() => toast.success('Downloading...')} className="flex items-center gap-1"><Download className="h-3 w-3" /> PDF</LibButton>
                 </div>
               </LibCard>
             ))}

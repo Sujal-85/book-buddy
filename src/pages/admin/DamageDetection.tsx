@@ -57,7 +57,7 @@ const DamageDetection: React.FC = () => {
                   <LibButton onClick={simulateAssessment} className="flex items-center gap-2">
                     <Camera className="h-4 w-4" /> Capture & Assess
                   </LibButton>
-                  <LibButton variant="outline" onClick={simulateAssessment} className="flex items-center gap-2">
+                  <LibButton variant="ghost" onClick={simulateAssessment} className="flex items-center gap-2">
                     <Upload className="h-4 w-4" /> Upload Photos
                   </LibButton>
                 </div>
