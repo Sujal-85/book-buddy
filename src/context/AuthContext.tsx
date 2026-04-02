@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { type User, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '@/services/firebase';
+import { auth, db, isFirebaseConfigured } from '@/services/firebase';
 
 export type UserRole = 'admin' | 'student';
 
@@ -19,9 +19,11 @@ interface AuthContextType {
   user: AuthUser | null;
   firebaseUser: User | null;
   loading: boolean;
+  isDemo: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
   register: (email: string, password: string, name: string, studentId: string, phone: string) => Promise<void>;
   logout: () => Promise<void>;
+  loginAsDemo: (role: UserRole) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,40 +32,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<AuthUser | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const fetchUserRole = async (uid: string): Promise<AuthUser | null> => {
-    try {
-      const userDoc = await getDoc(doc(db, 'users', uid));
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        return {
-          uid,
-          email: data.email,
-          name: data.name || 'User',
-          role: data.role || 'student',
-          studentId: data.studentId,
-          phone: data.phone,
-          photoURL: data.photoURL,
-        };
-      }
-      return null;
-    } catch {
-      // If Firestore isn't configured, return a demo user
-      return {
-        uid,
-        email: 'demo@library.com',
-        name: 'Demo User',
-        role: 'admin',
-      };
-    }
-  };
+  const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
+    if (!isFirebaseConfigured || !auth) {
+      // No Firebase configured — go straight to not-loading state
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setFirebaseUser(fbUser);
-      if (fbUser) {
-        const userData = await fetchUserRole(fbUser.uid);
-        setUser(userData);
+      if (fbUser && db) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            setUser({
+              uid: fbUser.uid,
+              email: data.email,
+              name: data.name || 'User',
+              role: data.role || 'student',
+              studentId: data.studentId,
+              phone: data.phone,
+              photoURL: data.photoURL,
+            });
+          }
+        } catch {
+          setUser(null);
+        }
       } else {
         setUser(null);
       }
@@ -73,33 +70,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password: string): Promise<AuthUser> => {
+    if (!isFirebaseConfigured || !auth || !db) {
+      throw new Error('Firebase is not configured. Use demo login.');
+    }
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    const userData = await fetchUserRole(cred.user.uid);
-    if (!userData) throw new Error('User profile not found');
+    const userDoc = await getDoc(doc(db, 'users', cred.user.uid));
+    if (!userDoc.exists()) throw new Error('User profile not found');
+    const data = userDoc.data();
+    const userData: AuthUser = {
+      uid: cred.user.uid,
+      email: data.email,
+      name: data.name || 'User',
+      role: data.role || 'student',
+      studentId: data.studentId,
+      phone: data.phone,
+    };
     setUser(userData);
     return userData;
   };
 
   const register = async (email: string, password: string, name: string, studentId: string, phone: string) => {
+    if (!isFirebaseConfigured || !auth || !db) {
+      throw new Error('Firebase is not configured. Use demo login.');
+    }
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await setDoc(doc(db, 'users', cred.user.uid), {
-      email,
-      name,
-      role: 'student',
-      studentId,
-      phone,
-      createdAt: new Date().toISOString(),
+      email, name, role: 'student', studentId, phone, createdAt: new Date().toISOString(),
     });
     setUser({ uid: cred.user.uid, email, name, role: 'student', studentId, phone });
   };
 
   const logout = async () => {
-    await signOut(auth);
+    if (isFirebaseConfigured && auth) {
+      await signOut(auth);
+    }
     setUser(null);
+    setIsDemo(false);
+  };
+
+  const loginAsDemo = (role: UserRole) => {
+    setIsDemo(true);
+    setUser({
+      uid: 'demo-user',
+      email: role === 'admin' ? 'admin@library.com' : 'student@library.com',
+      name: role === 'admin' ? 'Admin User' : 'John Student',
+      role,
+      studentId: role === 'student' ? 'STU-001' : undefined,
+      phone: '+91 9876543210',
+    });
   };
 
   return (
-    <AuthContext.Provider value={{ user, firebaseUser, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, firebaseUser, loading, isDemo, login, register, logout, loginAsDemo }}>
       {children}
     </AuthContext.Provider>
   );
