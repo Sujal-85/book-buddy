@@ -45,12 +45,12 @@ const BrowseBooks: React.FC = () => {
   };
 
   return (
-    <div>
+    <div className="h-full flex flex-col overflow-hidden">
       <PageHeader title="Browse Books" description="Discover and borrow books from our collection" />
 
-      <div className="flex flex-col lg:flex-row gap-6">
+      <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
         {/* Filters Sidebar */}
-        <div className="w-full lg:w-56 shrink-0 space-y-4">
+        <div className="w-full lg:w-56 shrink-0 space-y-4 lg:overflow-y-auto">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
@@ -91,8 +91,8 @@ const BrowseBooks: React.FC = () => {
           </LibCard>
         </div>
 
-        {/* Books Grid */}
-        <div className="flex-1">
+        {/* Books Grid - scrollable */}
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
           {paginated.length === 0 ? (
             <EmptyState title="No books found" message="Try adjusting your filters or search terms." />
           ) : (
