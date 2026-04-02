@@ -68,8 +68,8 @@ const App = () => (
               <Route path="profile" element={<StudentProfile />} />
             </Route>
 
-            {/* Default redirect */}
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            {/* Landing page */}
+            <Route path="/" element={<Index />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <ChatbotWidget />
