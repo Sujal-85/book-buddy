@@ -8,9 +8,10 @@ import LibButton from '@/components/ui/LibButton';
 import LibInput from '@/components/ui/LibInput';
 import { BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { isFirebaseConfigured } from '@/services/firebase';
 
 const Login: React.FC = () => {
-  const { login } = useAuth();
+  const { login, loginAsDemo } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>({
@@ -30,6 +31,12 @@ const Login: React.FC = () => {
     }
   };
 
+  const handleDemoLogin = (role: 'admin' | 'student') => {
+    loginAsDemo(role);
+    toast.success(`Logged in as demo ${role}`);
+    navigate(role === 'admin' ? '/admin' : '/student');
+  };
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -42,22 +49,29 @@ const Login: React.FC = () => {
           <h2 className="text-lg font-semibold text-foreground mb-1">Sign in</h2>
           <p className="text-sm text-muted-foreground mb-6">Enter your credentials to access your account</p>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <LibInput label="Email" type="email" placeholder="you@example.com" {...register('email')} error={errors.email?.message} />
-            <LibInput label="Password" type="password" placeholder="••••••••" {...register('password')} error={errors.password?.message} />
-            <LibButton type="submit" loading={loading} className="w-full">Sign in</LibButton>
-          </form>
+          {isFirebaseConfigured ? (
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <LibInput label="Email" type="email" placeholder="you@example.com" {...register('email')} error={errors.email?.message} />
+              <LibInput label="Password" type="password" placeholder="••••••••" {...register('password')} error={errors.password?.message} />
+              <LibButton type="submit" loading={loading} className="w-full">Sign in</LibButton>
+            </form>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground text-center mb-4">
+                Firebase is not configured. Use demo mode to explore the app.
+              </p>
+              <LibButton className="w-full" onClick={() => handleDemoLogin('admin')}>
+                Login as Admin
+              </LibButton>
+              <LibButton variant="secondary" className="w-full" onClick={() => handleDemoLogin('student')}>
+                Login as Student
+              </LibButton>
+            </div>
+          )}
 
           <p className="text-sm text-muted-foreground text-center mt-4">
             Don't have an account?{' '}
             <Link to="/register" className="text-accent hover:underline">Register</Link>
-          </p>
-        </div>
-
-        {/* Demo credentials hint */}
-        <div className="mt-4 bg-card border border-border rounded-lg p-4">
-          <p className="text-xs text-muted-foreground text-center">
-            <strong className="text-foreground">Demo:</strong> Configure Firebase credentials in .env to enable authentication
           </p>
         </div>
       </div>
