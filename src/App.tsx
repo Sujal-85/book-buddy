@@ -27,8 +27,8 @@ import MyBooks from "@/pages/student/MyBooks";
 import BorrowHistory from "@/pages/student/History";
 import StudentProfile from "@/pages/student/Profile";
 
-import NotFound from "./pages/NotFound";
-import Index from "./pages/Index";
+import NotFound from "@/pages/NotFound";
+import Index from "@/pages/Index";
 
 const queryClient = new QueryClient();
 
