@@ -4,6 +4,9 @@ import LibTable from '@/components/ui/LibTable';
 import PageHeader from '@/components/layout/PageHeader';
 import { formatDate } from '@/utils/helpers';
 import type { Column } from '@/components/ui/LibTable';
+import { useAuth } from '@/context/AuthContext';
+import { useStudentBorrows } from '@/hooks/useBorrow';
+import { Loader2 } from 'lucide-react';
 
 interface HistoryRecord {
   id: string;
@@ -13,17 +16,10 @@ interface HistoryRecord {
   finePaid: number;
 }
 
-const history: HistoryRecord[] = [
-  { id: '1', title: 'The Pragmatic Programmer', issueDate: '2025-02-15', returnDate: '2025-03-01', finePaid: 0 },
-  { id: '2', title: 'Refactoring', issueDate: '2025-01-10', returnDate: '2025-01-28', finePaid: 20 },
-  { id: '3', title: 'Clean Architecture', issueDate: '2024-12-01', returnDate: '2024-12-14', finePaid: 0 },
-  { id: '4', title: 'Head First Design Patterns', issueDate: '2024-11-05', returnDate: '2024-11-25', finePaid: 15 },
-];
-
 const columns: Column<HistoryRecord>[] = [
   { key: 'title', header: 'Book' },
   { key: 'issueDate', header: 'Issue Date', render: (r) => formatDate(r.issueDate) },
-  { key: 'returnDate', header: 'Return Date', render: (r) => formatDate(r.returnDate) },
+  { key: 'returnDate', header: 'Return Date', render: (r) => r.returnDate ? formatDate(r.returnDate) : '—' },
   {
     key: 'finePaid',
     header: 'Fine Paid',
@@ -32,11 +28,36 @@ const columns: Column<HistoryRecord>[] = [
 ];
 
 const BorrowHistory: React.FC = () => {
+  const { user } = useAuth();
+  const { data: borrows = [], isLoading } = useStudentBorrows(user?.uid || '');
+
+  // Map Firestore data to table format
+  const history: HistoryRecord[] = borrows.map((b: any) => ({
+    id: b.id,
+    title: b.book?.title || 'Unknown Book',
+    issueDate: b.issuedAt?.toDate?.() ? b.issuedAt.toDate().toISOString() : b.issuedAt,
+    returnDate: b.returnedAt?.toDate?.() ? b.returnedAt.toDate().toISOString() : b.returnedAt,
+    finePaid: b.finePaid || 0,
+  })).sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
+
   return (
-    <div>
+    <div className="h-full flex flex-col">
       <PageHeader title="Borrowing History" description="View your complete borrowing history" />
-      <LibCard className="p-0">
-        <LibTable columns={columns} data={history} keyExtractor={(r) => r.id} emptyMessage="No borrowing history yet" />
+      <LibCard className="p-0 overflow-hidden">
+        {isLoading ? (
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-accent" />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <LibTable 
+              columns={columns} 
+              data={history} 
+              keyExtractor={(r) => r.id} 
+              emptyMessage="No borrowing history yet" 
+            />
+          </div>
+        )}
       </LibCard>
     </div>
   );

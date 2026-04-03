@@ -10,6 +10,7 @@ import ChatbotWidget from "@/components/chatbot/ChatbotWidget";
 // Auth Pages
 import Login from "@/pages/auth/Login";
 import Register from "@/pages/auth/Register";
+import CompleteProfile from "@/pages/auth/CompleteProfile";
 
 // Admin Pages
 import AdminDashboard from "@/pages/admin/Dashboard";
@@ -68,6 +69,7 @@ const App = () => (
             {/* Auth Routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/complete-profile" element={<ProtectedRoute><CompleteProfile /></ProtectedRoute>} />
 
             {/* Admin Routes */}
             <Route path="/admin" element={<ProtectedRoute><AdminRoute><AppLayout /></AdminRoute></ProtectedRoute>}>

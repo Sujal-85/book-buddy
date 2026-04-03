@@ -13,6 +13,8 @@ import Pagination from '@/components/ui/Pagination';
 import PageHeader from '@/components/layout/PageHeader';
 import { formatDate, getInitials } from '@/utils/helpers';
 import type { Column } from '@/components/ui/LibTable';
+import { membersApi, borrowApi } from '@/services/api';
+import { toast } from 'react-hot-toast';
 
 interface Member {
   id: string;
@@ -34,18 +36,61 @@ const demoMembers: Member[] = [
 ];
 
 const AdminMembers: React.FC = () => {
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [editMember, setEditMember] = useState<Member | null>(null);
   const [deleteMember, setDeleteMember] = useState<Member | null>(null);
 
+  const fetchMembers = async () => {
+    try {
+      setLoading(true);
+      const { data } = await membersApi.getAll();
+      
+      // Fetch active borrow counts for each member (simplified for performance)
+      // In a production app, this would be computed on the server or better cached
+      const borrows = await borrowApi.getActive();
+      const borrowCounts = borrows.data.reduce((acc: any, b: any) => {
+        acc[b.studentId] = (acc[b.studentId] || 0) + 1;
+        return acc;
+      }, {});
+
+      const mapped: Member[] = data.map((u: any) => ({
+        id: u.id,
+        name: u.displayName || u.email.split('@')[0],
+        email: u.email,
+        phone: u.phone || 'N/A',
+        studentId: u.studentId || (u.role === 'admin' ? 'ADMIN' : 'STU-NEW'),
+        joinedDate: u.createdAt ? 
+          (u.createdAt.seconds ? new Date(u.createdAt.seconds * 1000).toISOString() : u.createdAt) : 
+          new Date().toISOString(),
+        booksIssued: borrowCounts[u.id] || 0,
+        status: u.isProfileComplete ? 'active' : 'inactive',
+      }));
+
+      setMembers(mapped);
+    } catch (error) {
+      toast.error('Failed to fetch members');
+      console.error('[AdminMembers] Error fetching members:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchMembers();
+  }, []);
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm<MemberFormData>({
     resolver: zodResolver(memberSchema),
   });
 
-  const filtered = demoMembers.filter((m) =>
-    m.name.toLowerCase().includes(search.toLowerCase()) || m.email.toLowerCase().includes(search.toLowerCase())
+  const filtered = members.filter((m) =>
+    m.name.toLowerCase().includes(search.toLowerCase()) || 
+    m.email.toLowerCase().includes(search.toLowerCase()) ||
+    m.studentId.toLowerCase().includes(search.toLowerCase())
   );
 
   const perPage = 10;
@@ -86,11 +131,49 @@ const AdminMembers: React.FC = () => {
     },
   ];
 
-  const onSubmit = (data: MemberFormData) => {
-    console.log('Member data:', data);
-    setShowModal(false);
-    setEditMember(null);
-    reset();
+  const onSubmit = async (data: MemberFormData) => {
+    try {
+      if (editMember) {
+        await membersApi.update(editMember.id, {
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          studentId: data.studentId,
+          isProfileComplete: true,
+        });
+        toast.success('Member updated successfully');
+      } else {
+        await membersApi.create({
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          studentId: data.studentId,
+          role: 'student',
+          isProfileComplete: true,
+        });
+        toast.success('Member added successfully');
+      }
+      setShowModal(false);
+      setEditMember(null);
+      reset();
+      fetchMembers(); // Refresh list
+    } catch (error) {
+      toast.error('Failed to save member details');
+      console.error(error);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteMember) return;
+    try {
+      await membersApi.delete(deleteMember.id);
+      toast.success('Member removed');
+      setMembers(prev => prev.filter(m => m.id !== deleteMember.id));
+    } catch (err) {
+      toast.error('Failed to delete member');
+    } finally {
+      setDeleteMember(null);
+    }
   };
 
   return (
@@ -107,8 +190,17 @@ const AdminMembers: React.FC = () => {
       </div>
 
       <LibCard className="p-0">
-        <LibTable columns={columns} data={filtered} keyExtractor={(m) => m.id} />
-        <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+        {loading ? (
+          <div className="p-12 flex flex-col items-center justify-center gap-4">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-accent" />
+            <p className="text-sm text-muted-foreground">Fetching library members...</p>
+          </div>
+        ) : (
+          <>
+            <LibTable columns={columns} data={filtered.slice((page - 1) * perPage, page * perPage)} keyExtractor={(m) => m.id} />
+            <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+          </>
+        )}
       </LibCard>
 
       <Modal
@@ -133,7 +225,7 @@ const AdminMembers: React.FC = () => {
       <ConfirmDialog
         open={!!deleteMember}
         onClose={() => setDeleteMember(null)}
-        onConfirm={() => setDeleteMember(null)}
+        onConfirm={handleConfirmDelete}
         title="Delete Member"
         message={`Are you sure you want to delete "${deleteMember?.name}"?`}
         confirmLabel="Delete"

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
 import {
   BookOpen, Users, Clock, Monitor, Wifi, Award, ChevronDown, ChevronUp,
   Library, GraduationCap, Search, BarChart3, Shield, Globe, Newspaper,
@@ -88,6 +89,15 @@ const AccordionItem: React.FC<{ title: string; children: React.ReactNode; defaul
 };
 
 const Index: React.FC = () => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (user) {
+      navigate(user.role === 'admin' ? '/admin' : '/student');
+    }
+  }, [user, navigate]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header / Navbar */}
@@ -108,8 +118,22 @@ const Index: React.FC = () => {
             <a href="#staff" className="hover:text-foreground transition-colors">Staff</a>
           </nav>
           <div className="flex items-center gap-2">
-            <Link to="/login" className="px-4 py-2 text-sm font-medium text-accent hover:underline">Login</Link>
-            <Link to="/register" className="px-4 py-2 text-sm font-medium bg-accent text-accent-foreground rounded-md hover:opacity-90 transition-opacity">Register</Link>
+            {user ? (
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-medium text-foreground hidden lg:inline-block">Hi, {user.name}</span>
+                <Link to={user.role === 'admin' ? '/admin' : '/student'} className="px-4 py-2 text-sm font-medium bg-accent text-accent-foreground rounded-md hover:opacity-90 transition-opacity flex items-center gap-2">
+                  Dashboard
+                </Link>
+                <button onClick={logout} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-2">
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <>
+                <Link to="/login" className="px-4 py-2 text-sm font-medium text-accent hover:underline">Login</Link>
+                <Link to="/register" className="px-4 py-2 text-sm font-medium bg-accent text-accent-foreground rounded-md hover:opacity-90 transition-opacity">Register</Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -131,8 +155,8 @@ const Index: React.FC = () => {
                 An ocean of knowledge with 37,419+ volumes, digital resources, e-journals, and AI-powered tools — all designed to empower your academic journey.
               </p>
               <div className="flex flex-wrap gap-3">
-                <Link to="/register" className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-foreground rounded-md font-medium hover:opacity-90 transition-opacity">
-                  <GraduationCap className="h-5 w-5" /> Get Started
+                <Link to={user ? (user.role === 'admin' ? '/admin' : '/student') : '/register'} className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-foreground rounded-md font-medium hover:opacity-90 transition-opacity">
+                  <GraduationCap className="h-5 w-5" /> {user ? 'Go to Dashboard' : 'Get Started'}
                 </Link>
                 <a href="#about" className="inline-flex items-center gap-2 px-6 py-3 border border-border text-foreground rounded-md font-medium hover:bg-secondary transition-colors">
                   <BookOpen className="h-5 w-5" /> Explore Library

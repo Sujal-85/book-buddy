@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Send, AlertTriangle } from 'lucide-react';
 import LibButton from '@/components/ui/LibButton';
 import LibCard from '@/components/ui/LibCard';
@@ -7,31 +7,44 @@ import PageHeader from '@/components/layout/PageHeader';
 import { formatDate, getDaysOverdue, calculateFine } from '@/utils/helpers';
 import toast from 'react-hot-toast';
 import type { Column } from '@/components/ui/LibTable';
+import { borrowApi } from '@/services/api';
 
 interface OverdueRecord {
   id: string;
   studentName: string;
   bookTitle: string;
   dueDate: string;
-  daysOverdue: number;
-  fine: number;
 }
-
-const demoOverdue: OverdueRecord[] = [
-  { id: '1', studentName: 'Carol White', bookTitle: 'The Pragmatic Programmer', dueDate: '2025-03-15', daysOverdue: getDaysOverdue('2025-03-15'), fine: calculateFine('2025-03-15') },
-  { id: '2', studentName: 'Eve Davis', bookTitle: 'Domain-Driven Design', dueDate: '2025-03-10', daysOverdue: getDaysOverdue('2025-03-10'), fine: calculateFine('2025-03-10') },
-  { id: '3', studentName: 'Frank Miller', bookTitle: 'Refactoring', dueDate: '2025-03-20', daysOverdue: getDaysOverdue('2025-03-20'), fine: calculateFine('2025-03-20') },
-];
 
 const filters = ['All', '1–7 days', '7–30 days', '30+ days'];
 
 const Overdue: React.FC = () => {
   const [filter, setFilter] = useState('All');
+  const [overdueList, setOverdueList] = useState<OverdueRecord[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = demoOverdue.filter((r) => {
-    if (filter === '1–7 days') return r.daysOverdue >= 1 && r.daysOverdue <= 7;
-    if (filter === '7–30 days') return r.daysOverdue > 7 && r.daysOverdue <= 30;
-    if (filter === '30+ days') return r.daysOverdue > 30;
+  useEffect(() => {
+    fetchOverdue();
+  }, []);
+
+  const fetchOverdue = async () => {
+    try {
+      setLoading(true);
+      const { data } = await borrowApi.getOverdue();
+      setOverdueList(data as any);
+    } catch (error) {
+      toast.error('Failed to load overdue records');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filtered = overdueList.filter((r) => {
+    const days = getDaysOverdue(r.dueDate);
+    if (filter === '1–7 days') return days >= 1 && days <= 7;
+    if (filter === '7–30 days') return days > 7 && days <= 30;
+    if (filter === '30+ days') return days > 30;
     return true;
   });
 
@@ -39,8 +52,16 @@ const Overdue: React.FC = () => {
     { key: 'studentName', header: 'Student' },
     { key: 'bookTitle', header: 'Book' },
     { key: 'dueDate', header: 'Due Date', render: (r) => formatDate(r.dueDate) },
-    { key: 'daysOverdue', header: 'Days Overdue', render: (r) => <span className="text-destructive font-medium">{r.daysOverdue}</span> },
-    { key: 'fine', header: 'Fine', render: (r) => <span className="text-destructive font-medium">₹{r.fine}</span> },
+    { 
+      key: 'daysOverdue', 
+      header: 'Days Overdue', 
+      render: (r) => <span className="text-destructive font-medium">{getDaysOverdue(r.dueDate)}</span> 
+    },
+    { 
+      key: 'fine', 
+      header: 'Fine', 
+      render: (r) => <span className="text-destructive font-medium">₹{calculateFine(r.dueDate)}</span> 
+    },
     {
       key: 'actions',
       header: 'Actions',
@@ -58,7 +79,7 @@ const Overdue: React.FC = () => {
         title="Overdue Books"
         description="Track and manage overdue books"
         action={
-          <LibButton onClick={() => toast.success('Bulk reminders sent!')}>
+          <LibButton onClick={() => toast.success('Bulk reminders sent!')} disabled={overdueList.length === 0}>
             <Send className="h-4 w-4 mr-2" /> Send All Reminders
           </LibButton>
         }
@@ -66,14 +87,24 @@ const Overdue: React.FC = () => {
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {filters.map((f) => (
-          <LibButton key={f} variant={filter === f ? 'primary' : 'ghost'} size="sm" onClick={() => setFilter(f)}>
+          <LibButton 
+            key={f} 
+            variant={filter === f ? 'primary' : 'ghost'} 
+            size="sm" 
+            onClick={() => setFilter(f)}
+          >
             {f}
           </LibButton>
         ))}
       </div>
 
-      <LibCard className="p-0">
-        <LibTable columns={columns} data={filtered} keyExtractor={(r) => r.id} emptyMessage="No overdue books" />
+      <LibCard className="p-0 overflow-hidden">
+        <LibTable 
+          columns={columns} 
+          data={filtered} 
+          keyExtractor={(r) => r.id} 
+          emptyMessage={loading ? "Checking for overdue books..." : "No overdue books found"} 
+        />
       </LibCard>
     </div>
   );

@@ -14,9 +14,24 @@ interface LibTableProps<T> {
   keyExtractor: (item: T) => string;
   onRowClick?: (item: T) => void;
   emptyMessage?: string;
+  isLoading?: boolean;
 }
 
-function LibTable<T>({ columns, data, keyExtractor, onRowClick, emptyMessage = 'No data found' }: LibTableProps<T>) {
+function LibTable<T>({ columns, data, keyExtractor, onRowClick, emptyMessage = 'No data found', isLoading }: LibTableProps<T>) {
+  if (isLoading) {
+    return (
+      <div className="space-y-4 p-4">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="flex gap-4 items-center">
+            <div className="h-4 bg-secondary animate-pulse rounded flex-1" />
+            <div className="h-4 bg-secondary animate-pulse rounded flex-1" />
+            <div className="h-4 bg-secondary animate-pulse rounded w-24" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   if (data.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
