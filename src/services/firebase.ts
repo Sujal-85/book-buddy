@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
@@ -21,18 +21,25 @@ let storage: FirebaseStorage | null = null;
 let analytics: any = null;
 
 if (isFirebaseConfigured) {
-  const app = initializeApp(firebaseConfig);
+  // Avoid re-initializing if already done (HMR safe)
+  const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
   auth = getAuth(app);
   db = getFirestore(app);
   storage = getStorage(app);
-  
-  // Analytics only works in browser environments
-  if (typeof window !== 'undefined') {
-    const { getAnalytics } = await import('firebase/analytics');
-    analytics = getAnalytics(app);
+
+  // Analytics: initialize lazily in browser only — no top-level await that breaks esbuild
+  if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
+    import('firebase/analytics').then(({ getAnalytics, isSupported }) => {
+      isSupported().then((supported) => {
+        if (supported) {
+          analytics = getAnalytics(app);
+        }
+      });
+    }).catch(() => {
+      // Analytics is non-critical — silently skip if it fails
+    });
   }
 }
 
 export { auth, db, storage, analytics };
 export { GoogleAuthProvider, RecaptchaVerifier, PhoneAuthProvider, signInWithPhoneNumber } from 'firebase/auth';
-
