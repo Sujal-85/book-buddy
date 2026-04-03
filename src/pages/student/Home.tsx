@@ -7,22 +7,16 @@ import PageHeader from '@/components/layout/PageHeader';
 import { formatDate } from '@/utils/helpers';
 import { useNavigate } from 'react-router-dom';
 import LibButton from '@/components/ui/LibButton';
-
-const activeBorrows = [
-  { id: '1', title: 'Clean Code', dueDate: '2025-04-05', status: 'active' as const },
-  { id: '2', title: 'Design Patterns', dueDate: '2025-04-03', status: 'overdue' as const },
-];
-
-const featuredBooks = [
-  { id: '1', title: 'Introduction to Algorithms', author: 'Thomas Cormen', category: 'Computer Science', available: true },
-  { id: '2', title: 'Artificial Intelligence', author: 'Stuart Russell', category: 'AI', available: true },
-  { id: '3', title: 'Database Systems', author: 'Ramez Elmasri', category: 'Database', available: false },
-  { id: '4', title: 'Computer Networks', author: 'Andrew Tanenbaum', category: 'Networking', available: true },
-];
+import { useBooks } from '@/hooks/useBooks';
+import { useStudentBorrows } from '@/hooks/useBorrow';
 
 const StudentHome: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  const { data: activeBorrows = [], isLoading: borrowsLoading } = useStudentBorrows(user?.uid || '');
+  const { data: featuredBooks = [], isLoading: booksLoading } = useBooks({ limit: '4' });
+
   const hasDueSoon = activeBorrows.some((b) => {
     const due = new Date(b.dueDate);
     const diff = (due.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
@@ -41,47 +35,99 @@ const StudentHome: React.FC = () => {
       )}
 
       {/* Active Borrows */}
-      <h3 className="text-base font-semibold text-foreground mb-3">My Active Borrows</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
-        {activeBorrows.map((b) => (
-          <LibCard key={b.id} className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-secondary rounded-md"><BookOpen className="h-4 w-4 text-accent" /></div>
-              <div>
-                <p className="text-sm font-medium text-foreground">{b.title}</p>
-                <p className="text-xs text-muted-foreground">Due: {formatDate(b.dueDate)}</p>
-              </div>
-            </div>
-            <LibBadge variant={b.status === 'overdue' ? 'overdue' : 'issued'}>{b.status}</LibBadge>
+      <div className="mb-10">
+        <h3 className="text-sm font-bold text-foreground mb-4 uppercase tracking-widest flex items-center gap-2">
+          <BookOpen className="h-4 w-4 text-accent" />
+          My Active Borrows
+        </h3>
+        {borrowsLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[1, 2].map((i) => (
+              <div key={i} className="h-16 bg-secondary/50 animate-pulse rounded-lg" />
+            ))}
+          </div>
+        ) : activeBorrows.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {activeBorrows.map((b: any) => (
+              <LibCard key={b.id} className="flex items-center justify-between group hover:border-accent/30 transition-colors">
+                <div className="flex items-center gap-4">
+                  <div className="h-10 w-10 bg-secondary rounded-lg flex items-center justify-center group-hover:bg-accent/10 transition-colors text-muted-foreground group-hover:text-accent">
+                    <BookOpen className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-foreground">{b.book?.title || 'Unknown Book'}</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Due: {formatDate(b.dueDate)}</p>
+                  </div>
+                </div>
+                <LibBadge variant={b.status === 'overdue' ? 'overdue' : 'issued'}>{b.status}</LibBadge>
+              </LibCard>
+            ))}
+          </div>
+        ) : (
+          <LibCard className="py-8 text-center bg-secondary/5 border-2 border-dashed border-muted/20">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">No active borrows</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Visit the library to issue your first book!</p>
           </LibCard>
-        ))}
+        )}
       </div>
 
       {/* Featured Books */}
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base font-semibold text-foreground">Featured Books</h3>
-        <LibButton variant="ghost" size="sm" onClick={() => navigate('/student/books')}>Browse All</LibButton>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-bold text-foreground uppercase tracking-widest">Recommended for You</h3>
+        <LibButton variant="ghost" size="sm" className="h-8 text-[10px]" onClick={() => navigate('/student/books')}>Browse All</LibButton>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {featuredBooks.map((book) => (
-          <LibCard key={book.id} className="space-y-3">
-            <div className="h-32 bg-secondary rounded-md flex items-center justify-center">
-              <BookOpen className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-foreground">{book.title}</p>
-              <p className="text-xs text-muted-foreground">{book.author}</p>
-            </div>
-            <div className="flex items-center justify-between">
-              <LibBadge>{book.category}</LibBadge>
-              <LibBadge variant={book.available ? 'available' : 'issued'}>
-                {book.available ? 'Available' : 'Issued'}
-              </LibBadge>
-            </div>
-            {book.available && <LibButton size="sm" className="w-full">Request Borrow</LibButton>}
-          </LibCard>
-        ))}
-      </div>
+
+      {booksLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+           {[1, 2, 3, 4].map((i) => (
+             <LibCard key={i} className="space-y-4 opacity-50 border-dashed">
+                <div className="h-40 bg-secondary/50 rounded-lg animate-pulse" />
+                <div className="space-y-2">
+                  <div className="h-3 w-3/4 bg-secondary/50 rounded animate-pulse" />
+                  <div className="h-2 w-1/2 bg-secondary/50 rounded animate-pulse" />
+                </div>
+             </LibCard>
+           ))}
+        </div>
+      ) : featuredBooks.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {featuredBooks.map((book: any) => (
+            <LibCard key={book.id} className="space-y-4 group hover:border-accent/30 transition-all">
+              <div className="h-40 bg-secondary rounded-lg flex items-center justify-center group-hover:bg-accent/5 transition-colors overflow-hidden">
+                {book.cover ? (
+                  <img src={book.cover} alt={book.title} className="h-full w-full object-cover" />
+                ) : (
+                  <BookOpen className="h-10 w-10 text-muted-foreground group-hover:text-accent group-hover:scale-110 transition-all" />
+                )}
+              </div>
+              <div className="space-y-1 min-h-[3rem]">
+                <p className="text-sm font-bold text-foreground leading-tight line-clamp-2">{book.title}</p>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase">{book.author}</p>
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <LibBadge variant="default" className="text-[9px]">{book.category}</LibBadge>
+                <LibBadge variant={book.available ? 'available' : 'issued'} className="text-[9px]">
+                  {book.available ? 'Available' : 'Issued'}
+                </LibBadge>
+              </div>
+              {book.available && (
+                <LibButton 
+                  size="sm" 
+                  className="w-full h-8 text-[10px] uppercase font-bold"
+                  onClick={() => navigate('/student/books')}
+                >
+                  View Details
+                </LibButton>
+              )}
+            </LibCard>
+          ))}
+        </div>
+      ) : (
+        <LibCard className="py-12 text-center bg-secondary/5 border-2 border-dashed border-muted/20">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">No books available yet</p>
+          <p className="text-[10px] text-muted-foreground mt-1">Check back later for new arrivals.</p>
+        </LibCard>
+      )}
     </div>
   );
 };

@@ -6,9 +6,12 @@ import NotificationPanel from '@/components/notifications/NotificationPanel';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, Users, BookPlus, RotateCcw, AlertTriangle,
-  Settings, Home, Library, History, User, LogOut,
+  Settings, Home, Library, History, User, LogOut, ScanBarcode, Brain,
+  Camera, Calculator, Wand2, Upload, BarChart3, Bell as BellIcon, FileText, MapPin,
+  Sparkles, Mic, Target, Bot, Star, Heart, QrCode, TrendingUp, BellRing, FileSearch,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import famtLogo from '@/assets/famt-logo.png';
 
 const adminLinks = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -25,6 +28,15 @@ const studentLinks = [
   { to: '/student/books', label: 'Browse Books', icon: BookOpen },
   { to: '/student/mybooks', label: 'My Books', icon: Library },
   { to: '/student/history', label: 'History', icon: History },
+  { to: '/student/goals', label: 'Reading Goals', icon: Target },
+  { to: '/student/stats', label: 'Reading Stats', icon: TrendingUp },
+  { to: '/student/reviews', label: 'Book Reviews', icon: Star },
+  { to: '/student/wishlist', label: 'Wishlist', icon: Heart },
+  { to: '/student/qr-borrow', label: 'QR Borrow', icon: QrCode },
+  { to: '/student/summary', label: 'AI Summary', icon: FileSearch },
+  { to: '/student/companion', label: 'AI Study Companion', icon: Bot },
+  { to: '/student/recommendations', label: 'AI Picks', icon: Sparkles },
+  { to: '/student/alerts', label: 'Availability Alerts', icon: BellRing },
   { to: '/student/profile', label: 'Profile', icon: User },
 ];
 
@@ -69,15 +81,46 @@ const Navbar: React.FC = () => {
       {/* Mobile slide-out menu */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="fixed inset-0 bg-foreground/20" onClick={() => setMobileMenuOpen(false)} />
-          <div className="fixed left-0 top-0 bottom-0 w-64 bg-card border-r border-border z-50 flex flex-col">
-            <div className="flex items-center justify-between px-4 py-4 border-b border-border">
-              <span className="text-lg font-semibold text-foreground">LibraryOS</span>
-              <button onClick={() => setMobileMenuOpen(false)} className="text-muted-foreground">
-                <X className="h-5 w-5" />
+          <div className="fixed inset-0 bg-foreground/20 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
+          <div className="fixed left-0 top-0 bottom-0 w-72 bg-card border-r border-border z-50 flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card/80">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl overflow-hidden bg-white shadow-sm flex items-center justify-center p-0.5">
+                  <img
+                    src={famtLogo}
+                    alt="FAMT Logo"
+                    className="h-full w-auto object-contain"
+                  />
+                </div>
+                <div>
+                  <span className="text-base font-black text-foreground tracking-tight">FAMT Library</span>
+                  <p className="text-[10px] text-muted-foreground font-medium -mt-0.5 capitalize">{user?.role} Portal</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
-            <nav className="flex-1 px-3 py-4 space-y-1">
+
+            {/* User badge */}
+            <div className="px-4 py-3 border-b border-border/50 bg-accent/5">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-accent/15 flex items-center justify-center text-sm font-black text-accent">
+                  {user?.name?.charAt(0) || 'U'}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-foreground truncate">{user?.name}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Nav links */}
+            <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
               {links.map((link) => {
                 const isActive = location.pathname === link.to;
                 return (
@@ -86,22 +129,24 @@ const Navbar: React.FC = () => {
                     to={link.to}
                     onClick={() => setMobileMenuOpen(false)}
                     className={cn(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors',
+                      'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
                       isActive
-                        ? 'bg-blue-50 text-blue-700 dark:bg-accent/10 dark:text-accent'
+                        ? 'bg-accent text-accent-foreground shadow-sm shadow-accent/20'
                         : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                     )}
                   >
-                    <link.icon className="h-4 w-4" />
+                    <link.icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-accent-foreground' : '')} />
                     {link.label}
                   </Link>
                 );
               })}
             </nav>
-            <div className="px-3 py-4 border-t border-border">
+
+            {/* Logout */}
+            <div className="px-3 py-3 border-t border-border">
               <button
                 onClick={() => { logout(); setMobileMenuOpen(false); }}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-muted-foreground hover:bg-secondary w-full"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive w-full transition-colors font-medium"
               >
                 <LogOut className="h-4 w-4" />
                 Log out

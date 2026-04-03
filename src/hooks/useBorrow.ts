@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 export const useActiveBorrows = (params?: Record<string, string>) => {
   return useQuery({
     queryKey: ['borrows-active', params],
-    queryFn: () => borrowApi.getActive(params).then((r) => r.data),
+    queryFn: () => borrowApi.getActive().then((r: any) => r.data),
   });
 };
 
@@ -16,10 +16,11 @@ export const useOverdueBorrows = () => {
   });
 };
 
-export const useBorrowHistory = (params?: Record<string, string>) => {
+export const useBorrowHistory = (studentId: string) => {
   return useQuery({
-    queryKey: ['borrows-history', params],
-    queryFn: () => borrowApi.getHistory(params).then((r) => r.data),
+    queryKey: ['borrows-history', studentId],
+    queryFn: () => borrowApi.getStudentBorrows(studentId).then((r: any) => r.data),
+    enabled: !!studentId,
   });
 };
 
@@ -47,13 +48,27 @@ export const useIssueBook = () => {
 export const useReturnBook = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data?: { finePaid?: boolean } }) => borrowApi.return(id, data),
+    mutationFn: ({ borrowId, bookId }: { borrowId: string; bookId: string }) => borrowApi.returnBook(borrowId, bookId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['borrows-active'] });
       qc.invalidateQueries({ queryKey: ['borrows-overdue'] });
       qc.invalidateQueries({ queryKey: ['books'] });
       toast.success('Book returned successfully');
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: any) => toast.error(err.message),
+  });
+};
+
+export const useRequestRenewal = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ borrowId, reason }: { borrowId: string; reason: string }) => 
+      import('@/services/api').then(m => m.renewalApi.request(borrowId, reason)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['student-borrows'] });
+      qc.invalidateQueries({ queryKey: ['borrows-active'] });
+      toast.success('Renewal request sent to admin');
+    },
+    onError: (err: any) => toast.error(err.message),
   });
 };

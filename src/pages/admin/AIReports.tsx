@@ -5,6 +5,7 @@ import LibCard from '@/components/ui/LibCard';
 import LibButton from '@/components/ui/LibButton';
 import LibBadge from '@/components/ui/LibBadge';
 import toast from 'react-hot-toast';
+import { generateReport } from '@/services/aiBackend';
 
 const reportTypes = [
   { id: 'monthly', name: 'Monthly Usage Report', description: 'Complete overview of circulation, memberships, and trends', icon: Calendar },
@@ -22,10 +23,30 @@ const generatedReports = [
 
 const AIReports: React.FC = () => {
   const [generating, setGenerating] = useState<string | null>(null);
+  const [generatedReport, setGeneratedReport] = useState<string | null>(null);
 
-  const handleGenerate = (id: string) => {
+  const handleGenerate = async (id: string) => {
     setGenerating(id);
-    setTimeout(() => { setGenerating(null); toast.success('Report generated! Ready for download.'); }, 3000);
+    try {
+      // Mock data for reports
+      const mockData = {
+        totalBooks: 1250,
+        borrowedThisMonth: 342,
+        activeMembers: 856,
+        newMembers: 45,
+        overdueBooks: 23,
+        popularCategories: ['Programming', 'AI/ML', 'Database', 'Networking'],
+      };
+      
+      const report = await generateReport(id, mockData, 'April 2025');
+      setGeneratedReport(report);
+      toast.success('AI Report generated successfully!');
+    } catch (error) {
+      console.error('Report generation error:', error);
+      toast.error('Failed to generate report');
+    } finally {
+      setGenerating(null);
+    }
   };
 
   return (

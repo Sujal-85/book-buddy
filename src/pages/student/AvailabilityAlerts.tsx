@@ -6,18 +6,9 @@ import LibButton from '@/components/ui/LibButton';
 import LibBadge from '@/components/ui/LibBadge';
 import toast from 'react-hot-toast';
 
-const alerts = [
-  { id: '1', book: 'System Design Interview', author: 'Alex Xu', status: 'waiting', position: 3, estimatedDate: '2025-04-05' },
-  { id: '2', book: 'Deep Learning', author: 'Ian Goodfellow', status: 'waiting', position: 7, estimatedDate: '2025-04-15' },
-  { id: '3', book: 'Computer Networks', author: 'James Kurose', status: 'available', position: 0, estimatedDate: 'Now' },
-];
+const alerts: any[] = [];
 
-const notifications = [
-  { message: '"Clean Architecture" is now available — you reserved it!', time: '2 hours ago', read: false },
-  { message: '"Intro to Algorithms" will be returned by Apr 3', time: '1 day ago', read: true },
-  { message: 'New arrival: "AI Superpowers" added to library', time: '2 days ago', read: true },
-  { message: '"Design Patterns" due date reminder — 2 days left', time: '3 days ago', read: true },
-];
+const notifications: any[] = [];
 
 const AvailabilityAlerts: React.FC = () => (
   <div className="h-full flex flex-col overflow-hidden">
@@ -34,24 +25,39 @@ const AvailabilityAlerts: React.FC = () => (
 
       {/* Active Alerts */}
       <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Active Alerts ({alerts.length})</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          Active Alerts 
+          <LibBadge variant="default" className="text-[10px]">{alerts.length}</LibBadge>
+        </h3>
         <div className="space-y-3">
-          {alerts.map((a) => (
-            <LibCard key={a.id} className={`flex items-center justify-between ${a.status === 'available' ? 'border-green-500/50' : ''}`}>
-              <div className="flex items-center gap-3">
-                <BookOpen className={`h-5 w-5 ${a.status === 'available' ? 'text-green-500' : 'text-muted-foreground'}`} />
-                <div>
-                  <p className="text-sm font-medium text-foreground">{a.book}</p>
-                  <p className="text-xs text-muted-foreground">{a.author} · {a.status === 'available' ? 'Available now!' : `Queue position: #${a.position} · Est. ${a.estimatedDate}`}</p>
+          {alerts.length > 0 ? (
+            alerts.map((a) => (
+              <LibCard key={a.id} className={`flex items-center justify-between transition-all ${a.status === 'available' ? 'border-green-500/50 bg-green-500/5' : ''}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`h-10 w-10 rounded-full flex items-center justify-center ${a.status === 'available' ? 'bg-green-500/10' : 'bg-secondary'}`}>
+                    <BookOpen className={`h-5 w-5 ${a.status === 'available' ? 'text-green-500' : 'text-muted-foreground'}`} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{a.book}</p>
+                    <p className="text-xs text-muted-foreground">{a.author} · {a.status === 'available' ? 'Available now!' : `Queue position: #${a.position} · Est. ${a.estimatedDate}`}</p>
+                  </div>
                 </div>
+                {a.status === 'available' ? (
+                  <LibButton size="sm" onClick={() => toast.success('Borrow request sent!')} className="flex items-center gap-1.5 shadow-sm active:scale-95"><CheckCircle className="h-3 w-3" /> Borrow Now</LibButton>
+                ) : (
+                  <LibBadge variant="pending" className="text-[10px]">In Queue</LibBadge>
+                )}
+              </LibCard>
+            ))
+          ) : (
+            <LibCard className="py-8 flex flex-col items-center justify-center text-center space-y-3 bg-secondary/20 border-dashed border-muted">
+              <Bell className="h-8 w-8 text-muted-foreground/30" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">No active alerts</p>
+                <p className="text-xs text-muted-foreground">Search and track books to get notified when they return.</p>
               </div>
-              {a.status === 'available' ? (
-                <LibButton size="sm" onClick={() => toast.success('Borrow request sent!')} className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> Borrow Now</LibButton>
-              ) : (
-                <LibBadge>In Queue</LibBadge>
-              )}
             </LibCard>
-          ))}
+          )}
         </div>
       </div>
 
@@ -59,14 +65,27 @@ const AvailabilityAlerts: React.FC = () => (
       <div>
         <h3 className="text-sm font-semibold text-foreground mb-3">Recent Notifications</h3>
         <div className="space-y-2">
-          {notifications.map((n, i) => (
-            <LibCard key={i} className={`flex items-center justify-between ${!n.read ? 'border-accent/50' : ''}`}>
-              <div className="flex items-center gap-3">
-                {!n.read && <div className="w-2 h-2 rounded-full bg-accent shrink-0" />}
-                <div><p className="text-sm text-foreground">{n.message}</p><p className="text-xs text-muted-foreground">{n.time}</p></div>
-              </div>
-            </LibCard>
-          ))}
+          {notifications.length > 0 ? (
+            notifications.map((n, i) => (
+              <LibCard key={i} className={`flex items-center justify-between transition-colors ${!n.read ? 'border-accent/30 bg-accent/5' : ''}`}>
+                <div className="flex items-center gap-3">
+                  {!n.read ? (
+                    <div className="w-2.5 h-2.5 rounded-full bg-accent animate-pulse shrink-0" />
+                  ) : (
+                    <div className="w-2.5 h-2.5 rounded-full bg-muted/30 shrink-0" />
+                  )}
+                  <div>
+                    <p className={`text-sm ${!n.read ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>{n.message}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{n.time}</p>
+                  </div>
+                </div>
+              </LibCard>
+            ))
+          ) : (
+            <div className="py-10 text-center">
+              <p className="text-sm text-muted-foreground italic">Your inbox is empty</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

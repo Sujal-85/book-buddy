@@ -10,6 +10,7 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
   appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || '',
 };
 
 export const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
@@ -17,12 +18,21 @@ export const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseCon
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
+let analytics: any = null;
 
 if (isFirebaseConfigured) {
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
   storage = getStorage(app);
+  
+  // Analytics only works in browser environments
+  if (typeof window !== 'undefined') {
+    const { getAnalytics } = await import('firebase/analytics');
+    analytics = getAnalytics(app);
+  }
 }
 
-export { auth, db, storage };
+export { auth, db, storage, analytics };
+export { GoogleAuthProvider, RecaptchaVerifier, PhoneAuthProvider, signInWithPhoneNumber } from 'firebase/auth';
+

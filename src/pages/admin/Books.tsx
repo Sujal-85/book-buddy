@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { bookSchema, type BookFormData } from '@/utils/validators';
-import { Search, Plus, Edit2, Trash2, BookPlus } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, BookPlus, Database } from 'lucide-react';
 import LibButton from '@/components/ui/LibButton';
 import LibCard from '@/components/ui/LibCard';
 import LibBadge from '@/components/ui/LibBadge';
@@ -12,6 +12,10 @@ import Modal, { ConfirmDialog } from '@/components/ui/Modal';
 import Pagination from '@/components/ui/Pagination';
 import PageHeader from '@/components/layout/PageHeader';
 import type { Column } from '@/components/ui/LibTable';
+import { useBooks, useCreateBook, useUpdateBook, useDeleteBook } from '@/hooks/useBooks';
+import { fetchBookByISBN } from '@/lib/googleBooks';
+import { seedBooks } from '@/utils/seedBooks';
+import toast from 'react-hot-toast';
 
 interface Book {
   id: string;
@@ -25,17 +29,6 @@ interface Book {
   cover?: string;
 }
 
-const demoBooks: Book[] = [
-  { id: '1', title: 'Clean Code', author: 'Robert C. Martin', isbn: '9780132350884', category: 'Programming', totalCopies: 5, availableCopies: 3, status: 'available' },
-  { id: '2', title: 'Design Patterns', author: 'Gang of Four', isbn: '9780201633610', category: 'Programming', totalCopies: 3, availableCopies: 0, status: 'issued' },
-  { id: '3', title: 'The Pragmatic Programmer', author: 'David Thomas', isbn: '9780135957059', category: 'Programming', totalCopies: 4, availableCopies: 2, status: 'available' },
-  { id: '4', title: 'Refactoring', author: 'Martin Fowler', isbn: '9780134757599', category: 'Programming', totalCopies: 2, availableCopies: 0, status: 'overdue' },
-  { id: '5', title: 'Introduction to Algorithms', author: 'Thomas H. Cormen', isbn: '9780262033848', category: 'Computer Science', totalCopies: 6, availableCopies: 4, status: 'available' },
-  { id: '6', title: 'Artificial Intelligence', author: 'Stuart Russell', isbn: '9780136042594', category: 'AI', totalCopies: 3, availableCopies: 1, status: 'available' },
-  { id: '7', title: 'Database Systems', author: 'Ramez Elmasri', isbn: '9780133970777', category: 'Database', totalCopies: 4, availableCopies: 3, status: 'available' },
-  { id: '8', title: 'Computer Networks', author: 'Andrew Tanenbaum', isbn: '9780132126953', category: 'Networking', totalCopies: 3, availableCopies: 0, status: 'issued' },
-];
-
 const categories = ['All', 'Programming', 'Computer Science', 'AI', 'Database', 'Networking', 'Mathematics'];
 const availabilities = ['All', 'Available', 'Issued', 'Overdue'];
 
@@ -47,21 +40,76 @@ const AdminBooks: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editBook, setEditBook] = useState<Book | null>(null);
   const [deleteBook, setDeleteBook] = useState<Book | null>(null);
+  const [isbnInput, setIsbnInput] = useState('');
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  const { data: books = [], isLoading, refetch } = useBooks({
+    search,
+    category: category !== 'All' ? category : undefined
+  });
+
+  const createBook = useCreateBook();
+  const updateBook = useUpdateBook();
+  const removeBook = useDeleteBook();
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<BookFormData>({
     resolver: zodResolver(bookSchema),
   });
 
-  const filtered = demoBooks.filter((b) => {
-    const matchSearch = b.title.toLowerCase().includes(search.toLowerCase()) || b.author.toLowerCase().includes(search.toLowerCase());
-    const matchCategory = category === 'All' || b.category === category;
+  const filtered = books.filter((b: any) => {
     const matchAvailability = availability === 'All' || b.status === availability.toLowerCase();
-    return matchSearch && matchCategory && matchAvailability;
+    return matchAvailability;
   });
 
   const perPage = 10;
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginatedBooks = filtered.slice((page - 1) * perPage, page * perPage);
+
+  const handleIsbnLookup = async () => {
+    if (!isbnInput || isbnInput.length < 10) {
+      toast.error('Please enter a valid ISBN');
+      return;
+    }
+
+    setIsLookingUp(true);
+    const bookData = await fetchBookByISBN(isbnInput);
+    setIsLookingUp(false);
+
+    if (bookData) {
+      const { volumeInfo } = bookData;
+      reset({
+        title: volumeInfo.title,
+        author: volumeInfo.authors?.join(', ') || '',
+        isbn: isbnInput,
+        category: volumeInfo.categories?.[0] || '',
+        description: volumeInfo.description || '',
+        totalCopies: 1,
+        publisher: volumeInfo.publisher || '',
+        year: volumeInfo.publishedDate ? new Date(volumeInfo.publishedDate).getFullYear() : undefined,
+      } as any);
+      toast.success('Book details fetched!');
+    } else {
+      toast.error('Book not found. Please enter details manually.');
+    }
+  };
+
+  const handleSeed = async () => {
+    try {
+      setIsSeeding(true);
+      const count = await seedBooks();
+      if (count) {
+        toast.success(`Successfully seeded ${count} books!`);
+        refetch();
+      } else {
+        toast.error('Books already exist or seeding failed.');
+      }
+    } catch (error) {
+      toast.error('Failed to seed books');
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   const columns: Column<Book>[] = [
     {
@@ -99,10 +147,23 @@ const AdminBooks: React.FC = () => {
   ];
 
   const onSubmit = (data: BookFormData) => {
-    console.log('Book data:', data);
-    setShowAddModal(false);
-    setEditBook(null);
-    reset();
+    if (editBook) {
+      updateBook.mutate({ id: editBook.id, data: data as any }, {
+        onSuccess: () => {
+          setShowAddModal(false);
+          setEditBook(null);
+          reset();
+        }
+      });
+    } else {
+      createBook.mutate(data as any, {
+        onSuccess: () => {
+          setShowAddModal(false);
+          setIsbnInput('');
+          reset();
+        }
+      });
+    }
   };
 
   return (
@@ -111,9 +172,22 @@ const AdminBooks: React.FC = () => {
         title="Books Management"
         description="Manage your library collection"
         action={
-          <LibButton onClick={() => { setEditBook(null); reset(); setShowAddModal(true); }}>
-            <Plus className="h-4 w-4 mr-2" /> Add Book
-          </LibButton>
+          <div className="flex gap-2">
+            {books.length === 0 && (
+              <LibButton
+                variant="secondary"
+                onClick={handleSeed}
+                loading={isSeeding}
+                className="flex items-center gap-2"
+              >
+                <Database className="w-4 h-4" />
+                Seed Library
+              </LibButton>
+            )}
+            <LibButton onClick={() => { setEditBook(null); reset(); setShowAddModal(true); }}>
+              <Plus className="h-4 w-4 mr-2" /> Add Book
+            </LibButton>
+          </div>
         }
       />
 
@@ -137,23 +211,48 @@ const AdminBooks: React.FC = () => {
       </div>
 
       <LibCard className="p-0">
-        <LibTable columns={columns} data={paginatedBooks} keyExtractor={(b) => b.id} />
+        <LibTable columns={columns} data={paginatedBooks} keyExtractor={(b) => b.id} isLoading={isLoading} />
         <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
       </LibCard>
 
       {/* Add/Edit Modal */}
       <Modal
         open={showAddModal}
-        onClose={() => { setShowAddModal(false); setEditBook(null); }}
+        onClose={() => { setShowAddModal(false); setEditBook(null); setIsbnInput(''); }}
         title={editBook ? 'Edit Book' : 'Add New Book'}
         footer={
           <>
             <LibButton variant="ghost" onClick={() => { setShowAddModal(false); setEditBook(null); }}>Cancel</LibButton>
-            <LibButton onClick={handleSubmit(onSubmit)}>{editBook ? 'Update' : 'Add Book'}</LibButton>
+            <LibButton 
+              onClick={handleSubmit(onSubmit)} 
+              loading={createBook.isPending || updateBook.isPending}
+            >
+              {editBook ? 'Update' : 'Add Book'}
+            </LibButton>
           </>
         }
       >
         <form className="space-y-4">
+          {!editBook && (
+            <div className="flex gap-2 items-end mb-4 p-3 bg-secondary/30 rounded-lg">
+              <div className="flex-1">
+                <LibInput 
+                  label="Quick Add by ISBN" 
+                  placeholder="Enter 10 or 13 digit ISBN" 
+                  value={isbnInput}
+                  onChange={(e) => setIsbnInput(e.target.value)}
+                />
+              </div>
+              <LibButton 
+                type="button" 
+                variant="secondary" 
+                onClick={handleIsbnLookup}
+                loading={isLookingUp}
+              >
+                Fetch
+              </LibButton>
+            </div>
+          )}
           <LibInput label="Title" defaultValue={editBook?.title} {...register('title')} error={errors.title?.message} />
           <LibInput label="Author" defaultValue={editBook?.author} {...register('author')} error={errors.author?.message} />
           <LibInput label="ISBN" defaultValue={editBook?.isbn} {...register('isbn')} error={errors.isbn?.message} />
@@ -174,10 +273,11 @@ const AdminBooks: React.FC = () => {
       <ConfirmDialog
         open={!!deleteBook}
         onClose={() => setDeleteBook(null)}
-        onConfirm={() => setDeleteBook(null)}
+        onConfirm={() => removeBook.mutate(deleteBook!.id, { onSuccess: () => setDeleteBook(null) })}
         title="Delete Book"
         message={`Are you sure you want to delete "${deleteBook?.title}"? This action cannot be undone.`}
         confirmLabel="Delete"
+        loading={removeBook.isPending}
       />
     </div>
   );
