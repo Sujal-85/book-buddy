@@ -11,6 +11,9 @@ import toast from 'react-hot-toast';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import type { ConfirmationResult } from 'firebase/auth';
 import { useEffect } from 'react';
+import { Controller } from 'react-hook-form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 const Register: React.FC = () => {
   const { user, register: registerUser, sendPhoneOtp, verifyPhoneOtp, loginWithGoogle, needsProfileCompletion } = useAuth();
@@ -18,7 +21,8 @@ const Register: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    // Only redirect after full registration (user has an email)
+    if (user && user.email) {
       if (needsProfileCompletion) {
         navigate('/complete-profile');
       } else {
@@ -31,7 +35,7 @@ const Register: React.FC = () => {
   const [otp, setOtp] = useState('');
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<RegisterFormData>({
+  const { register, handleSubmit, watch, control, formState: { errors } } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
   });
 
@@ -79,7 +83,7 @@ const Register: React.FC = () => {
 
     setLoading(true);
     try {
-      await registerUser(data.email, data.password, data.name, data.studentId, data.phone);
+      await registerUser(data.email, data.password, data.name, data.phone, data.college, data.branch, data.year);
       toast.success('Account created successfully!');
       navigate('/student');
     } catch (err: unknown) {
@@ -104,8 +108,55 @@ const Register: React.FC = () => {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <LibInput label="Full Name" placeholder="John Doe" {...register('name')} error={errors.name?.message} />
             <LibInput label="Email" type="email" placeholder="you@example.com" {...register('email')} error={errors.email?.message} />
-            <LibInput label="Student ID" placeholder="STU-001" {...register('studentId')} error={errors.studentId?.message} />
+            <LibInput label="College Name" placeholder="e.g. FAMT" {...register('college')} error={errors.college?.message} />
             
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Branch</Label>
+                <Controller
+                  name="branch"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <SelectTrigger className={errors.branch ? "border-red-500" : ""}>
+                        <SelectValue placeholder="Select Branch" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CSE">CSE</SelectItem>
+                        <SelectItem value="IT">IT</SelectItem>
+                        <SelectItem value="Mechanical">Mechanical</SelectItem>
+                        <SelectItem value="Electrical">Electrical</SelectItem>
+                        <SelectItem value="Civil">Civil</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {errors.branch && <p className="text-[10px] text-red-500">{errors.branch.message}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Year</Label>
+                <Controller
+                  name="year"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <SelectTrigger className={errors.year ? "border-red-500" : ""}>
+                        <SelectValue placeholder="Select Year" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1st Year">1st Year</SelectItem>
+                        <SelectItem value="2nd Year">2nd Year</SelectItem>
+                        <SelectItem value="3rd Year">3rd Year</SelectItem>
+                        <SelectItem value="4th Year">4th Year</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {errors.year && <p className="text-[10px] text-red-500">{errors.year.message}</p>}
+              </div>
+            </div>
             <div className="space-y-1">
               <label className="block text-sm font-medium text-foreground">Phone</label>
               <div className="flex gap-2">
