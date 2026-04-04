@@ -10,6 +10,17 @@ import {
 import { cn } from '@/lib/utils';
 import famtLogo from '@/assets/famt-logo.png';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const adminLinks = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -100,13 +111,26 @@ const Sidebar: React.FC = () => {
             <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
           </div>
         </div>
-        <button
-          onClick={logout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-muted-foreground hover:bg-secondary hover:text-foreground w-full mt-1 transition-colors"
-        >
-          <LogOut className="h-4 w-4" />
-          Log out
-        </button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <button className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-muted-foreground hover:bg-secondary hover:text-foreground w-full mt-1 transition-colors">
+              <LogOut className="h-4 w-4" />
+              Log out
+            </button>
+          </AlertDialogTrigger>
+          <AlertDialogContent className="max-w-[90vw] sm:max-w-[425px]">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Logout</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to log out? You will need to sign in again to access the portal.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={logout} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Log out</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </aside>
   );

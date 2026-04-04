@@ -18,7 +18,8 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    // Only redirect if they logged in properly with email/google
+    if (user && user.email) {
       if (needsProfileCompletion) {
         navigate('/complete-profile');
       } else {

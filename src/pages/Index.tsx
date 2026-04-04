@@ -12,6 +12,17 @@ import {
 import famtLogo from '@/assets/famt-logo.png';
 import librarianImg from '@/assets/librarian.png';
 import libraryStudentsImg from '@/assets/library-students.png';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const libraryResources = [
   { label: 'Books (Titles)', value: '7,496' },
@@ -89,14 +100,29 @@ const AccordionItem: React.FC<{ title: string; children: React.ReactNode; defaul
 };
 
 const Index: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   React.useEffect(() => {
-    if (user) {
-      navigate(user.role === 'admin' ? '/admin' : '/student');
+    if (user && !loading) {
+      setIsRedirecting(true);
+      const timer = setTimeout(() => {
+        navigate(user.role === 'admin' ? '/admin' : '/student');
+      }, 800);
+      return () => clearTimeout(timer);
     }
-  }, [user, navigate]);
+  }, [user, loading, navigate]);
+
+  if (loading || isRedirecting) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center">
+        <img src={famtLogo} alt="FAMT Logo" className="h-20 w-20 object-contain mb-8 animate-pulse" />
+        <div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-6 text-muted-foreground text-sm font-medium">Entering Portal...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -124,9 +150,27 @@ const Index: React.FC = () => {
                 <Link to={user.role === 'admin' ? '/admin' : '/student'} className="px-4 py-2 text-sm font-medium bg-accent text-accent-foreground rounded-md hover:opacity-90 transition-opacity flex items-center gap-2">
                   Dashboard
                 </Link>
-                <button onClick={logout} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-2">
-                  Logout
-                </button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-2">
+                      Logout
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="max-w-[90vw] sm:max-w-[425px]">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Confirm Logout</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to log out? You will need to sign in again to access the portal.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={logout} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                        Log out
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             ) : (
               <>
