@@ -1,19 +1,57 @@
-import React, { useState, useRef } from 'react';
-import { FileText, BookOpen, Sparkles, Copy, Type, Upload, AlertCircle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
+import React, { useState, useRef, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { FileText, BookOpen, Sparkles, Copy, Type, Upload, AlertCircle, CheckCircle2, Loader2, Trash2, Search } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import LibCard from '@/components/ui/LibCard';
 import LibButton from '@/components/ui/LibButton';
 import LibBadge from '@/components/ui/LibBadge';
 import toast from 'react-hot-toast';
 import { summarizeText, summarizePDF } from '@/services/aiBackend';
+import { useBooks } from '@/hooks/useBooks';
+
+import { useAuth } from '@/context/AuthContext';
 
 const AISummary: React.FC = () => {
+  const { user } = useAuth();
   const [bookTitle, setBookTitle] = useState('');
   const [bookText, setBookText] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedBook, setSelectedBook] = useState<any | null>(null);
+  const [bookSearch, setBookSearch] = useState('');
   const [generating, setGenerating] = useState(false);
-  const [summary, setSummary] = useState<null | { title: string; summary: string; type: 'text' | 'pdf'; length: number }>(null);
+  const [summary, setSummary] = useState<null | { title: string; summary: string; type: 'text' | 'pdf' | 'library'; length: number }>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: allBooks = [] } = useBooks();
+
+  const filteredBooks = useMemo(() => {
+    if (!bookSearch.trim()) return [];
+    const s = bookSearch.toLowerCase();
+    return allBooks.filter(b => 
+      b.title.toLowerCase().includes(s) || 
+      b.author.toLowerCase().includes(s)
+    ).slice(0, 5);
+  }, [allBooks, bookSearch]);
+
+  // Persistence: Load from localStorage on mount
+  React.useEffect(() => {
+    const saved = localStorage.getItem('latest_ai_summary');
+    if (saved) {
+      try {
+        setSummary(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to parse saved summary');
+      }
+    }
+  }, []);
+
+  // Persistence: Save to localStorage when summary updates
+  React.useEffect(() => {
+    if (summary) {
+      localStorage.setItem('latest_ai_summary', JSON.stringify(summary));
+    }
+  }, [summary]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -27,30 +65,41 @@ const AISummary: React.FC = () => {
         return;
       }
       setSelectedFile(file);
+      setSelectedBook(null);
       setBookTitle(file.name.replace('.pdf', ''));
     }
   };
 
   const handleGenerate = async () => {
-    if (!selectedFile && !bookText.trim()) {
-      toast.error('Please provide text or upload a PDF');
+    if (!selectedFile && !bookText.trim() && !selectedBook) {
+      toast.error('Please provide text, upload a PDF, or select a library book');
       return;
     }
 
     setGenerating(true);
     try {
+      const context = {
+        userId: user?.uid,
+        userEmail: user?.email,
+        subType: selectedFile ? 'pdf_summary' : (selectedBook ? 'library_book_summary' : 'text_summary'),
+        prompt: selectedFile ? `Summarize PDF: ${selectedFile.name}` : (selectedBook ? `Summarize library book: ${selectedBook.title}` : `Summarize custom text: ${bookTitle}`)
+      };
+
       let result = '';
       if (selectedFile) {
-        result = await summarizePDF(selectedFile);
+        result = await summarizePDF(selectedFile, context);
+      } else if (selectedBook) {
+        const textToSummarize = `Title: ${selectedBook.title}\nAuthor: ${selectedBook.author}\nCategory: ${selectedBook.category}\nDescription: ${selectedBook.description || 'No description available.'}`;
+        result = await summarizeText(textToSummarize, 1000, context);
       } else {
-        result = await summarizeText(bookText, 1000);
+        result = await summarizeText(bookText, 1000, context);
       }
 
       setSummary({
-        title: bookTitle || (selectedFile ? selectedFile.name : 'Untitled Summary'),
+        title: selectedBook ? selectedBook.title : (bookTitle || (selectedFile ? selectedFile.name : 'Untitled Summary')),
         summary: result,
-        type: selectedFile ? 'pdf' : 'text',
-        length: selectedFile ? selectedFile.size : bookText.length
+        type: selectedFile ? 'pdf' : (selectedBook ? 'library' : 'text'),
+        length: selectedFile ? selectedFile.size : (selectedBook ? (selectedBook.description?.length || 0) : bookText.length)
       });
       toast.success('AI Summary Generated Successfully!');
     } catch (error) {
@@ -65,8 +114,11 @@ const AISummary: React.FC = () => {
     setBookText('');
     setBookTitle('');
     setSelectedFile(null);
+    setSelectedBook(null);
+    setBookSearch('');
     if (fileInputRef.current) fileInputRef.current.value = '';
     setSummary(null);
+    localStorage.removeItem('latest_ai_summary');
   };
 
   return (
@@ -128,6 +180,52 @@ const AISummary: React.FC = () => {
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border/50" /></div>
+                  <div className="relative flex justify-center text-[10px] uppercase font-black text-muted-foreground tracking-[0.3em]"><span className="bg-card px-3">or select from library</span></div>
+                </div>
+
+                {/* Library Book Search */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input 
+                    value={bookSearch} 
+                    onChange={(e) => setBookSearch(e.target.value)} 
+                    placeholder="Search library books..." 
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
+                  />
+                  {filteredBooks.length > 0 && !selectedBook && (
+                    <div className="absolute w-full mt-1 bg-card border border-border rounded-xl z-10 shadow-lg overflow-hidden">
+                      {filteredBooks.map((b) => (
+                        <button 
+                          key={b.id} 
+                          onClick={() => { setSelectedBook(b); setBookSearch(''); setSelectedFile(null); setBookText(''); }} 
+                          className="w-full text-left px-4 py-2 hover:bg-secondary text-sm flex justify-between items-center bg-card"
+                        >
+                          <span className="truncate font-medium">{b.title} <span className="text-muted-foreground text-xs">by {b.author}</span></span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {selectedBook && (
+                  <div className="bg-accent/5 border border-accent/20 rounded-xl p-3 flex items-center justify-between animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="h-10 w-8 bg-accent/10 rounded flex items-center justify-center flex-shrink-0">
+                        <BookOpen className="h-4 w-4 text-accent" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate">{selectedBook.title}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{selectedBook.author}</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setSelectedBook(null)} className="text-muted-foreground hover:text-red-500 transition-colors">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border/50" /></div>
                   <div className="relative flex justify-center text-[10px] uppercase font-black text-muted-foreground tracking-[0.3em]"><span className="bg-card px-3">or paste content</span></div>
                 </div>
 
@@ -160,7 +258,7 @@ const AISummary: React.FC = () => {
               <LibButton 
                 onClick={handleGenerate} 
                 loading={generating}
-                disabled={generating || (!selectedFile && !bookText.trim())}
+                disabled={generating || (!selectedFile && !bookText.trim() && !selectedBook)}
                 className="w-full py-7 rounded-2xl shadow-xl shadow-accent/20 text-lg font-black tracking-tighter"
               >
                 {generating ? 'Processing Material...' : 'Synthesize Key Insights'}
@@ -198,16 +296,14 @@ const AISummary: React.FC = () => {
                   <div className="flex items-center gap-4 text-[10px] font-black text-muted-foreground uppercase tracking-widest pl-11">
                     <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-500" /> Full Context Map</span>
                     <span className="opacity-30">|</span>
-                    <span>{summary.type === 'pdf' ? (summary.length / 1024).toFixed(1) + ' KB' : summary.length + ' Chars'}</span>
+                    <span>{summary.type === 'pdf' ? (summary.length / 1024).toFixed(1) + ' KB' : (summary.type === 'library' ? 'Library Book' : summary.length + ' Chars')}</span>
                   </div>
                 </div>
 
-                <div className="prose prose-sm max-w-none text-foreground leading-relaxed font-medium bg-white/50 dark:bg-black/20 p-6 rounded-3xl border border-white/20 shadow-inner">
-                   {summary.summary.split('\n').map((para, i) => (
-                     <p key={i} className={para.startsWith('-') || para.startsWith('*') ? 'pl-4 -indent-4 mb-2' : 'mb-4'}>
-                       {para}
-                     </p>
-                   ))}
+                <div className="prose prose-lg dark:prose-invert max-w-none bg-white/40 dark:bg-black/40 backdrop-blur-sm p-10 rounded-[2.5rem] border border-accent/10 shadow-[inset_0_2px_20px_rgba(0,0,0,0.02)] h-[500px] overflow-y-auto custom-scrollbar prose-headings:font-black prose-headings:tracking-tighter prose-headings:text-foreground prose-p:text-foreground/90 prose-p:leading-relaxed prose-strong:text-accent prose-strong:font-black prose-ul:list-disc prose-li:my-2 prose-hr:border-accent/10 animate-in fade-in-50 duration-700">
+                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                     {summary.summary}
+                   </ReactMarkdown>
                 </div>
 
                 <div className="flex gap-3">

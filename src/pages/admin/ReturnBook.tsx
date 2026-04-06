@@ -55,6 +55,18 @@ const ReturnBook: React.FC = () => {
     }
   };
 
+  const handlePayFine = async (borrowId: string) => {
+    try {
+      await borrowApi.payFine(borrowId);
+      toast.success('Fine marked as paid in database');
+      // No need to refresh borrows list as it doesn't filter by fine status usually,
+      // but we could refresh if we had a fineStatus column.
+    } catch (error) {
+      toast.error('Failed to update fine status');
+      console.error(error);
+    }
+  };
+
   const filtered = borrows.filter((r) =>
     r.studentName.toLowerCase().includes(search.toLowerCase()) || 
     r.bookTitle.toLowerCase().includes(search.toLowerCase())
@@ -93,7 +105,7 @@ const ReturnBook: React.FC = () => {
         return (
           <div className="flex gap-2">
             {fine > 0 && (
-              <LibButton size="sm" variant="success" onClick={() => toast.success('Fine marked as paid')}>
+              <LibButton size="sm" variant="success" onClick={() => handlePayFine(r.id)}>
                 <DollarSign className="h-3 w-3 mr-1" /> Paid
               </LibButton>
             )}

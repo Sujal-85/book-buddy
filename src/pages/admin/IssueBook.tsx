@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Search, Calendar, CheckCircle, BookOpen } from 'lucide-react';
 import LibButton from '@/components/ui/LibButton';
 import LibCard from '@/components/ui/LibCard';
@@ -12,6 +13,7 @@ import { membersApi, booksApi, borrowApi } from '@/services/api';
 // Demo data removed for real implementation
 
 const IssueBook: React.FC = () => {
+  const location = useLocation();
   const [studentSearch, setStudentSearch] = useState('');
   const [students, setStudents] = useState<any[]>([]);
   const [isSearchingStudents, setIsSearchingStudents] = useState(false);
@@ -31,6 +33,22 @@ const IssueBook: React.FC = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  // Load book from navigation state if present
+  useEffect(() => {
+    const bookId = location.state?.bookId;
+    if (bookId) {
+      const fetchBook = async () => {
+        try {
+          const { data } = await booksApi.getById(bookId);
+          setSelectedBook(data);
+        } catch (err) {
+          console.error('Error fetching book from state:', err);
+        }
+      };
+      fetchBook();
+    }
+  }, [location.state]);
 
   // Real-time student search
   React.useEffect(() => {

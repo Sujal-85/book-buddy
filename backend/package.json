@@ -2,6 +2,9 @@
   "name": "book-buddy-ai-backend",
   "version": "1.0.0",
   "description": "AI Backend for Book Buddy Library System with Gemini API",
+  "engines": {
+    "node": "22"
+  },
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
@@ -11,12 +14,13 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
+    "@google/generative-ai": "^0.24.1",
     "@types/pdf-parse": "^1.1.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "firebase-admin": "^13.7.0",
+    "firebase-functions": "^7.2.3",
     "multer": "^2.1.1",
     "nodemailer": "^8.0.4",
     "pdf-parse": "^2.4.5"

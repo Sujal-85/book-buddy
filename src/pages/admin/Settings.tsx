@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { settingsSchema, type SettingsFormData } from '@/utils/validators';
@@ -7,25 +7,53 @@ import LibCard from '@/components/ui/LibCard';
 import LibInput from '@/components/ui/LibInput';
 import PageHeader from '@/components/layout/PageHeader';
 import toast from 'react-hot-toast';
+import { settingsApi } from '@/services/api';
+import { RefreshCw } from 'lucide-react';
 
 const AdminSettings: React.FC = () => {
-  const { register, handleSubmit, formState: { errors } } = useForm<SettingsFormData>({
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<SettingsFormData>({
     resolver: zodResolver(settingsSchema),
-    defaultValues: {
-      libraryName: 'Central University Library',
-      timings: '9:00 AM - 8:00 PM (Mon-Sat)',
-      contact: 'library@university.edu | +91 1234567890',
-      rules: 'Books must be returned within the due date. Fines will be charged for late returns.',
-      finePerDay: 5,
-      maxBorrowDays: 14,
-      maxBooksPerStudent: 3,
-    },
   });
 
-  const onSubmit = (data: SettingsFormData) => {
-    console.log('Settings:', data);
-    toast.success('Settings saved successfully');
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        setLoading(true);
+        const { data } = await settingsApi.get();
+        reset(data as any);
+      } catch (err) {
+        console.error('Fetch settings error:', err);
+        toast.error('Failed to load settings');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSettings();
+  }, [reset]);
+
+  const onSubmit = async (data: SettingsFormData) => {
+    setSaving(true);
+    try {
+      await settingsApi.update(data as any);
+      toast.success('Settings saved successfully');
+    } catch (err) {
+      console.error('Save settings error:', err);
+      toast.error('Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <RefreshCw className="h-8 w-8 animate-spin text-accent" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -54,7 +82,7 @@ const AdminSettings: React.FC = () => {
           </div>
         </LibCard>
 
-        <LibButton type="submit" className="w-full sm:w-auto">Save Settings</LibButton>
+        <LibButton type="submit" loading={saving} className="w-full sm:w-auto">Save Settings</LibButton>
       </form>
     </div>
   );

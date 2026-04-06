@@ -2,10 +2,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '@/services/api';
 import toast from 'react-hot-toast';
 
-export const useNotifications = () => {
+export const useNotifications = (studentId?: string) => {
   return useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => notificationsApi.getAll().then((r) => r.data),
+    queryKey: ['notifications', studentId],
+    queryFn: async () => {
+      if (!studentId) return [];
+      const { data } = await notificationsApi.getAll(studentId);
+      return data;
+    },
+    enabled: !!studentId,
     refetchInterval: 30000,
   });
 };

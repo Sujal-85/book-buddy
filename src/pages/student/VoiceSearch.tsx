@@ -6,58 +6,136 @@ import LibButton from '@/components/ui/LibButton';
 import LibBadge from '@/components/ui/LibBadge';
 import toast from 'react-hot-toast';
 import { processVoiceQuery, VoiceQueryResult } from '@/services/aiBackend';
+import { booksApi } from '@/services/api';
 
-const sampleResults: any[] = [];
+import { useAuth } from '@/context/AuthContext';
 
-const recentSearches: string[] = [];
+import { useIssueBook } from '@/hooks/useBorrow';
+import { addDays } from 'date-fns';
 
 const VoiceSearch: React.FC = () => {
+  const { user } = useAuth();
+  const issueBook = useIssueBook();
   const [listening, setListening] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [processing, setProcessing] = useState(false);
-  const [aiResult, setAiResult] = useState<VoiceQueryResult | null>(null);
+  const [aiResult, setAiResult] = useState<any | null>(null);
 
   const toggleListening = () => {
     if (listening) {
       setListening(false);
-    } else {
-      setListening(true);
-      toast('🎤 Listening... speak now');
-      // Simulate voice recognition
-      setTimeout(() => {
-        setListening(false);
-        const recognizedText = 'Find me a book about artificial intelligence';
-        setQuery(recognizedText);
-        toast.success(`Voice recognized: "${recognizedText}"`);
-        // Auto-process the voice query
-        processVoiceCommand(recognizedText);
-      }, 3000);
+      return;
     }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      toast.error('Voice recognition is not supported in this browser. Please try Chrome or Edge.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      setListening(true);
+      setQuery('');
+      setAiResult(null);
+      toast('🎤 Listening... speak now');
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error', event.error);
+      setListening(false);
+      
+      let message = `Error: ${event.error}`;
+      if (event.error === 'no-speech') {
+        message = 'No speech detected. Please try again.';
+      } else if (event.error === 'not-allowed') {
+        message = 'Microphone permission denied. Please allow access.';
+      }
+      
+      toast.error(message);
+    };
+
+    recognition.onend = () => {
+      setListening(false);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setQuery(transcript);
+      toast.success(`Voice recognized: "${transcript}"`);
+      processVoiceCommand(transcript);
+    };
+
+    recognition.start();
   };
 
   const processVoiceCommand = async (text: string) => {
+    if (!text.trim()) return;
     setProcessing(true);
     try {
-      const result = await processVoiceQuery(text);
+      // 1. Get AI Interpretation
+      const result = await processVoiceQuery(text, {
+        userId: user?.uid,
+        userEmail: user?.email,
+        subType: 'voice_query'
+      });
       setAiResult(result);
-      toast.success(`AI understood: ${result.intent} intent`);
-      // Mock search results based on AI interpretation
-      setResults([
-        { title: 'Artificial Intelligence: A Modern Approach', author: 'Stuart Russell', category: 'AI', available: true },
-        { title: 'Deep Learning', author: 'Ian Goodfellow', category: 'AI', available: false },
-      ]);
-    } catch (error) {
+      
+      // 2. Perform Real Search from Firestore
+      const searchParams = {
+        search: result.searchTerms || text,
+        category: result.genre,
+        limit: 10
+      };
+      
+      const response = await booksApi.getAll(searchParams);
+      
+      if (response && response.data) {
+        setResults(response.data);
+        if (response.data.length > 0) {
+          toast.success(`Found ${response.data.length} books!`);
+        } else {
+          toast.error('No matching books found in our database.');
+        }
+      }
+      
+      if (result.intent) {
+        toast(`AI identified ${result.intent} intent`, { icon: '🤖' });
+      }
+
+    } catch (error: any) {
       console.error('Voice processing error:', error);
-      toast.error('Failed to process voice query');
+      toast.error('AI Error: ' + (error?.message || 'Failed to process voice query'));
+      
+      // Local search fallback if backend fails entirely
+      try {
+        const fallback = await booksApi.getAll({ search: text, limit: 5 });
+        setResults(fallback.data);
+      } catch (err) {
+        setResults([]);
+      }
     } finally {
       setProcessing(false);
     }
   };
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
-    await processVoiceCommand(query);
+  const handleBorrow = (bookId: string) => {
+    if (!user?.isProfileComplete) {
+      toast.error('Please complete your profile to borrow books');
+      return;
+    }
+    
+    issueBook.mutate({
+      studentId: user.uid,
+      bookId,
+      dueDate: addDays(new Date(), 14).toISOString(),
+    });
   };
 
   return (
@@ -136,7 +214,12 @@ const VoiceSearch: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <LibBadge variant={r.available ? 'available' : 'issued'}>{r.available ? 'Available' : 'Issued'}</LibBadge>
                   {r.available && (
-                    <LibButton size="sm" className="h-8 text-[10px]" onClick={() => toast.success('Borrow request sent!')}>
+                    <LibButton 
+                      size="sm" 
+                      className="h-8 text-[10px]" 
+                      onClick={() => handleBorrow(r.id)}
+                      loading={issueBook.isPending}
+                    >
                       Issue Now
                     </LibButton>
                   )}

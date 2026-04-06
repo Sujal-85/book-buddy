@@ -1,9 +1,9 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_AI_BACKEND_URL || 'http://localhost:3001/api';
+const API_URL = import.meta.env.VITE_AI_BACKEND_URL;
 
 const aiApi = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -78,6 +78,7 @@ export interface ShelfOrganization {
   rationale: string;
   spaceUtilization: number;
   recommendations: string[];
+  relocations?: Array<{ book: string; from: string; to: string; reason: string }>;
 }
 
 export interface ReadingStatsAnalysis {
@@ -111,15 +112,18 @@ export const chatWithAI = async (message: string, history: ChatMessage[] = []) =
 };
 
 // B. Summarization Service
-export const summarizeText = async (text: string, maxLength: number = 500) => {
-  const response = await aiApi.post('/ai/summarize', { text, maxLength });
+export const summarizeText = async (text: string, maxLength: number = 500, context?: any) => {
+  const response = await aiApi.post('/ai/summarize', { text, maxLength, context });
   return response.data.summary;
 };
 
 // B2. PDF Summarization Service
-export const summarizePDF = async (file: File) => {
+export const summarizePDF = async (file: File, context?: any) => {
   const formData = new FormData();
   formData.append('pdf', file);
+  if (context) {
+    formData.append('context', JSON.stringify(context));
+  }
   const response = await aiApi.post('/ai/summarize-pdf', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
@@ -133,15 +137,24 @@ export const getBookRecommendations = async (
   preferences: string,
   genres: string[] = [],
   count: number = 5,
-  libraryBooks: any[] = []
+  libraryBooks: any[] = [],
+  studentHistory: any[] = [],
+  context?: any
 ): Promise<BookRecommendation[]> => {
-  const response = await aiApi.post('/ai/recommendations', { preferences, genres, count, libraryBooks });
+  const response = await aiApi.post('/ai/recommendations', { 
+    preferences, 
+    genres, 
+    count, 
+    libraryBooks,
+    studentHistory,
+    context
+  });
   return response.data.recommendations;
 };
 
 // D. Voice Query Processing
-export const processVoiceQuery = async (transcript: string): Promise<VoiceQueryResult> => {
-  const response = await aiApi.post('/ai/voice-query', { transcript });
+export const processVoiceQuery = async (transcript: string, context?: any): Promise<VoiceQueryResult> => {
+  const response = await aiApi.post('/ai/voice-query', { transcript, context });
   return response.data.result;
 };
 
@@ -151,29 +164,32 @@ export const askStudyCompanion = async (question: string, context?: any) => {
     question, 
     userProfile: context?.userProfile,
     libraryBooks: context?.libraryBooks,
-    fileData: context?.fileData
+    history: context?.history,
+    fileData: context?.fileData,
+    context // Pass the original context for logging
   });
   return response.data.response;
 };
 
 // F. Review Analysis
-export const analyzeReviews = async (reviews: string[]): Promise<ReviewAnalysis> => {
-  const response = await aiApi.post('/ai/analyze-reviews', { reviews });
+export const analyzeReviews = async (reviews: string[], context?: any): Promise<ReviewAnalysis> => {
+  const response = await aiApi.post('/ai/analyze-reviews', { reviews, context });
   return response.data.analysis;
 };
 
 // G. Library Analytics
-export const analyzeLibraryData = async (data: any, analysisType: string) => {
-  const response = await aiApi.post('/ai/analytics', { data, analysisType });
+export const analyzeLibraryData = async (data: any, analysisType: string, context?: any) => {
+  const response = await aiApi.post('/ai/analytics', { data, analysisType, context });
   return response.data.insights;
 };
 
 // H. Damage Detection
 export const detectDamage = async (
   imageDescription: string,
-  bookCondition: string
+  bookCondition: string,
+  context?: any
 ): Promise<DamageAssessment> => {
-  const response = await aiApi.post('/ai/damage-detection', { imageDescription, bookCondition });
+  const response = await aiApi.post('/ai/damage-detection', { imageDescription, bookCondition, context });
   return response.data.assessment;
 };
 
@@ -182,27 +198,33 @@ export const calculateFine = async (
   overdueDays: number,
   bookValue: number,
   bookCondition: string,
-  userHistory: string
+  userHistory: string,
+  finePerDay: number = 5,
+  context?: any
 ): Promise<FineCalculation> => {
   const response = await aiApi.post('/ai/calculate-fine', {
     overdueDays,
     bookValue,
     bookCondition,
     userHistory,
+    finePerDay,
+    context
   });
   return response.data.fine;
 };
 
 // J. AI Cataloging
-export const generateCatalogData = async (bookInfo: {
+export const catalogBook = async (bookInfo: {
   title: string;
   author: string;
   description?: string;
   isbn?: string;
-}): Promise<CatalogData> => {
-  const response = await aiApi.post('/ai/catalog', { bookInfo });
+}, context?: any): Promise<CatalogData> => {
+  const response = await aiApi.post('/ai/catalog', { bookInfo, context });
   return response.data.catalogData;
 };
+
+export const generateCatalogData = catalogBook;
 
 // K. Smart Notifications
 export const generateNotification = async (
@@ -211,73 +233,92 @@ export const generateNotification = async (
   context?: any
 ) => {
   const response = await aiApi.post('/ai/notification', { type, userData, context });
-  return response.data.message;
+  return response.data;
 };
 
+export const sendTargetedNotification = generateNotification;
+
 // L. AI Reports
-export const generateReport = async (reportType: string, data: any, period: string) => {
-  const response = await aiApi.post('/ai/report', { reportType, data, period });
+export const generateReport = async (reportType: string, data: any, period: string, context?: any) => {
+  const response = await aiApi.post('/ai/report', { reportType, data, period, context });
   return response.data.report;
 };
 
 // M. Shelf Organization
 export const suggestShelfOrganization = async (
-  books: any[],
-  constraints?: any
+  books: any[] | string,
+  constraints?: any,
+  context?: any
 ): Promise<ShelfOrganization> => {
-  const response = await aiApi.post('/ai/shelf-organization', { books, constraints });
+  const response = await aiApi.post('/ai/shelf-organization', { books, constraints, context });
   return response.data.organization;
 };
+
+export const organizeShelves = suggestShelfOrganization;
 
 // N. Reading Goals
 export const getReadingGoalAssistance = async (
   currentProgress: number,
   goal: number,
   timeframe: string,
-  readingSpeed?: string
+  readingSpeed?: string,
+  context?: any
 ) => {
   const response = await aiApi.post('/ai/reading-goal', {
     currentProgress,
     goal,
     timeframe,
     readingSpeed,
+    context
   });
   return response.data.assistance;
 };
 
+// N2. Suggest New Reading Goals
+export const suggestReadingGoals = async (studentData: any, context?: any) => {
+  const response = await aiApi.post('/ai/suggest-goals', { studentData, context });
+  return response.data.suggestions;
+};
+
 // O. Reading Stats Analysis
-export const analyzeReadingStats = async (stats: any): Promise<ReadingStatsAnalysis> => {
-  const response = await aiApi.post('/ai/reading-stats', { stats });
+export const analyzeReadingStats = async (stats: any, context?: any): Promise<ReadingStatsAnalysis> => {
+  const response = await aiApi.post('/ai/reading-stats', { stats, context });
   return response.data.analysis;
 };
 
 // P. Student Analytics
-export const analyzeStudentPerformance = async (studentData: any, classData?: any) => {
-  const response = await aiApi.post('/ai/student-analytics', { studentData, classData });
+export const analyzeStudentPerformance = async (studentData: any, classData?: any, context?: any) => {
+  const response = await aiApi.post('/ai/student-analytics', { studentData, classData, context });
   return response.data.analysis;
 };
+
+export const analyzeStudentGoals = analyzeStudentPerformance;
 
 // Q. Availability Prediction
 export const predictAvailability = async (
   bookData: any,
-  queueLength: number
-): Promise<AvailabilityPrediction> => {
-  const response = await aiApi.post('/ai/predict-availability', { bookData, queueLength });
+  queueLength: number = 0,
+  context?: any
+): Promise<any> => {
+  const response = await aiApi.post('/ai/predict-availability', { bookData, queueLength, context });
   return response.data.prediction;
 };
 
 // R. Bulk Import
 export const processBulkImport = async (
   data: string,
-  format: 'csv' | 'json' | 'text' = 'text'
+  format: 'csv' | 'json' | 'text' = 'text',
+  context?: any
 ): Promise<BulkImportResult[]> => {
-  const response = await aiApi.post('/ai/bulk-import', { data, format });
+  const response = await aiApi.post('/ai/bulk-import', { data, format, context });
   return response.data.processed;
 };
 
+export const bulkImport = processBulkImport;
+
 // S. Image Analysis
-export const analyzeImage = async (imageBase64: string, mimeType: string, prompt: string) => {
-  const response = await aiApi.post('/ai/analyze-image', { imageBase64, mimeType, prompt });
+export const analyzeImage = async (imageBase64: string, mimeType: string, prompt: string, context?: any) => {
+  const response = await aiApi.post('/ai/analyze-image', { imageBase64, mimeType, prompt, context });
   return response.data.analysis;
 };
 
@@ -285,9 +326,10 @@ export const analyzeImage = async (imageBase64: string, mimeType: string, prompt
 export const generateText = async (
   prompt: string,
   temperature: number = 0.7,
-  maxTokens: number = 2048
+  maxTokens: number = 2048,
+  context?: any
 ) => {
-  const response = await aiApi.post('/ai/generate', { prompt, temperature, maxTokens });
+  const response = await aiApi.post('/ai/generate', { prompt, temperature, maxTokens, context });
   return response.data.generated;
 };
 
@@ -301,6 +343,12 @@ export const checkAIBackendHealth = async () => {
   }
 };
 
+// V. Audit Logs
+export const getAILogs = async (limit: number = 50) => {
+  const response = await aiApi.get(`/ai/logs?limit=${limit}`);
+  return response.data.logs;
+};
+
 export default {
   // Chat
   chatWithAI,
@@ -310,8 +358,10 @@ export default {
   generateText,
   // Books
   getBookRecommendations,
+  catalogBook,
   generateCatalogData,
   processBulkImport,
+  bulkImport,
   // Search
   processVoiceQuery,
   // Study
@@ -321,12 +371,15 @@ export default {
   // Analytics
   analyzeLibraryData,
   analyzeStudentPerformance,
+  analyzeStudentGoals,
   analyzeReadingStats,
   // Admin
   detectDamage,
   calculateFine,
   suggestShelfOrganization,
+  organizeShelves,
   // Notifications
+  sendTargetedNotification,
   generateNotification,
   generateReport,
   // Students
@@ -336,4 +389,6 @@ export default {
   analyzeImage,
   // Health
   checkAIBackendHealth,
+  // Audit
+  getAILogs,
 };

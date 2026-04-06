@@ -30,6 +30,8 @@ import StudentAnalytics from "@/pages/admin/StudentAnalytics";
 import SmartNotifications from "@/pages/admin/SmartNotifications";
 import AIReports from "@/pages/admin/AIReports";
 import ShelfManagement from "@/pages/admin/ShelfManagement";
+import PredictAvailability from "@/pages/admin/PredictAvailability";
+import AIAudit from "@/pages/admin/AIAudit";
 
 // Student Pages
 import StudentHome from "@/pages/student/Home";
@@ -51,13 +53,16 @@ import AISummary from "@/pages/student/AISummary";
 import NotFound from "@/pages/NotFound";
 import Index from "@/pages/Index";
 
+import { UIProvider } from "@/context/UIContext";
+
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <AuthProvider>
-        <Toaster
+        <UIProvider>
+          <Toaster
           position="top-right"
           toastOptions={{
             className: 'text-sm',
@@ -85,11 +90,13 @@ const App = () => (
               <Route path="damage" element={<DamageDetection />} />
               <Route path="fines" element={<FineCalculator />} />
               <Route path="cataloging" element={<AICataloging />} />
+              <Route path="predictive-availability" element={<PredictAvailability />} />
               <Route path="import" element={<BulkImport />} />
               <Route path="student-analytics" element={<StudentAnalytics />} />
               <Route path="notifications" element={<SmartNotifications />} />
               <Route path="reports" element={<AIReports />} />
               <Route path="shelves" element={<ShelfManagement />} />
+              <Route path="audit" element={<AIAudit />} />
             </Route>
 
             {/* Student Routes */}
@@ -117,6 +124,7 @@ const App = () => (
           </Routes>
           <ChatbotWidget />
         </BrowserRouter>
+        </UIProvider>
       </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>
