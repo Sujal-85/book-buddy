@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Bot, Send, User, Sparkles, PlusCircle, Square, Languages, Search, BookOpen, Quote, Paperclip, X, FileText, Image as ImageIcon, Mic } from 'lucide-react';
 import { askStudyCompanion } from '@/services/aiBackend';
+import { borrowApi } from '@/services/api';
+import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -24,6 +26,20 @@ const StudyCompanion: React.FC = () => {
 
   const { user } = useAuth();
   const { data: allBooks } = useBooks();
+
+  const { data: borrowData } = useQuery({
+    queryKey: ['borrow-history', user?.uid],
+    queryFn: () => borrowApi.getStudentBorrows(user?.uid || ''),
+    enabled: !!user?.uid,
+  });
+
+  const studentHistory = useMemo(() => {
+    return borrowData?.data?.map((b: any) => ({
+      title: b.book?.title,
+      category: b.book?.category,
+      status: b.status
+    })) || [];
+  }, [borrowData]);
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -150,7 +166,11 @@ Ready to try it? Tell me a topic you're studying, or ask me for a book recommend
       const fileData = await Promise.all(selectedFiles.map(fileToData));
       setSelectedFiles([]); // Clear previews
 
-      const context = {
+      const aiContext = {
+        userId: user?.uid || 'guest',
+        userEmail: user?.email || 'guest@library.com',
+        subType: 'study_companion_chat',
+        prompt: text,
         userProfile: user ? {
           name: user.name,
           branch: user.branch,
@@ -162,10 +182,11 @@ Ready to try it? Tell me a topic you're studying, or ask me for a book recommend
           category: b.category,
           available: b.available
         })) || [],
+        history: studentHistory,
         fileData // New field
       };
 
-      const response = await askStudyCompanion(text, context);
+      const response = await askStudyCompanion(text, aiContext);
       setMessages((prev) => [...prev, { role: 'assistant', content: response }]);
     } catch (error) {
       console.error('Study companion error:', error);

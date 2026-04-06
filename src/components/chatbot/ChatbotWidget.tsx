@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, Sparkles } from 'lucide-react';
-import { chatWithAI } from '@/services/aiBackend';
+import { chatWithAI, ChatMessage } from '@/services/aiBackend';
 import toast from 'react-hot-toast';
 
 interface Message {
@@ -34,10 +34,10 @@ const ChatbotWidget: React.FC = () => {
     setTyping(true);
 
     try {
-      const history = messages
+      const history: ChatMessage[] = messages
         .filter(m => m.role === 'user' || (m.role === 'bot' && m.text !== 'Hi! I\'m your AI Library Assistant powered by Gemini. How can I help you today?'))
         .map(m => ({
-          role: m.role === 'user' ? 'user' : 'model',
+          role: (m.role === 'user' ? 'user' : 'model') as 'user' | 'model',
           parts: m.text,
         }));
 
@@ -51,10 +51,17 @@ const ChatbotWidget: React.FC = () => {
     } catch (error) {
       setTyping(false);
       console.error('Chat error:', error);
-      toast.error('AI service temporarily unavailable');
+      
+      const isQuotaError = typeof error === 'string' && (error.includes('429') || error.includes('limit') || error.includes('cap'));
+      const errorMessage = isQuotaError 
+        ? 'AI Quota Exceeded (429). Your project has exceeded its spending cap or free tier limits.' 
+        : 'Sorry, I\'m having trouble connecting to the AI service. Please try again in a moment.';
+      
+      toast.error(isQuotaError ? 'AI Quota Exceeded' : 'AI service temporarily unavailable');
+      
       setMessages((prev) => [
         ...prev,
-        { role: 'bot', text: 'Sorry, I\'m having trouble connecting to the AI service. Please try again in a moment.' },
+        { role: 'bot', text: errorMessage },
       ]);
     }
   };

@@ -1,62 +1,123 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Keyboard, BookOpen, Search, Plus, CheckCircle } from 'lucide-react';
+import { Camera, Keyboard, BookOpen, Search, Plus, CheckCircle, RefreshCw } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import LibCard from '@/components/ui/LibCard';
 import LibButton from '@/components/ui/LibButton';
 import LibBadge from '@/components/ui/LibBadge';
+import { fetchBookByISBN } from '@/lib/googleBooks';
+import { booksApi, borrowApi } from '@/services/api';
 import toast from 'react-hot-toast';
-
-const mockBookLookup: Record<string, { title: string; author: string; isbn: string; category: string; publisher: string; year: number; pages: number; }> = {
-  '9780132350884': { title: 'Clean Code', author: 'Robert C. Martin', isbn: '9780132350884', category: 'Programming', publisher: 'Prentice Hall', year: 2008, pages: 464 },
-  '9780201633610': { title: 'Design Patterns', author: 'Gang of Four', isbn: '9780201633610', category: 'Programming', publisher: 'Addison-Wesley', year: 1994, pages: 416 },
-  '9780262033848': { title: 'Introduction to Algorithms', author: 'Thomas Cormen', isbn: '9780262033848', category: 'Computer Science', publisher: 'MIT Press', year: 2009, pages: 1312 },
-  '9780596007126': { title: 'Head First Design Patterns', author: 'Eric Freeman', isbn: '9780596007126', category: 'Programming', publisher: "O'Reilly", year: 2004, pages: 694 },
-  '9780134685991': { title: 'Effective Java', author: 'Joshua Bloch', isbn: '9780134685991', category: 'Programming', publisher: 'Addison-Wesley', year: 2018, pages: 416 },
-};
+import { useNavigate } from 'react-router-dom';
 
 const BarcodeScanner: React.FC = () => {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<'camera' | 'manual'>('manual');
   const [barcode, setBarcode] = useState('');
   const [scanning, setScanning] = useState(false);
-  const [foundBook, setFoundBook] = useState<typeof mockBookLookup[string] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [foundBook, setFoundBook] = useState<any | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const handleScan = () => {
-    if (!barcode.trim()) { toast.error('Please enter a barcode/ISBN'); return; }
-    const book = mockBookLookup[barcode.trim()];
-    if (book) {
-      setFoundBook(book);
-      toast.success('Book found!');
-    } else {
-      setFoundBook(null);
-      toast.error('Book not found. You can add it as a new book.');
+  const handleScan = async () => {
+    const cleanBarcode = barcode.trim();
+    if (!cleanBarcode) { toast.error('Please enter a barcode/ISBN'); return; }
+    
+    setLoading(true);
+    try {
+      // 1. Check local database first
+      const { data: localBooks } = await booksApi.getAll({ search: cleanBarcode, limit: 1 });
+      
+      if (localBooks && localBooks.length > 0) {
+        const book = localBooks[0];
+        setFoundBook({
+          id: book.id,
+          title: book.title,
+          author: book.author,
+          isbn: book.isbn,
+          category: book.category || 'General',
+          publisher: book.publisher || 'N/A',
+          year: book.year || 'N/A',
+          pages: book.pages || 'N/A',
+          source: 'library'
+        });
+        toast.success('Book found in library catalog!');
+      } else {
+        // 2. Fetch from Google Books if not in local DB
+        const googleBook = await fetchBookByISBN(cleanBarcode);
+        if (googleBook) {
+          const info = googleBook.volumeInfo;
+          setFoundBook({
+            title: info.title,
+            author: info.authors?.join(', ') || 'Unknown',
+            isbn: cleanBarcode,
+            category: info.categories?.[0] || 'General',
+            publisher: info.publisher || 'N/A',
+            year: info.publishedDate ? new Date(info.publishedDate).getFullYear() : 'N/A',
+            pages: info.pageCount || 'N/A',
+            source: 'external'
+          });
+          toast.success('Book details fetched from Google Books!');
+        } else {
+          setFoundBook(null);
+          toast.error('Book not found in any database.');
+        }
+      }
+    } catch (err) {
+      console.error('Scan error:', err);
+      toast.error('Failed to look up book');
+    } finally {
+      setLoading(false);
     }
   };
 
   const startCamera = async () => {
+    // Camera implementation would go here in a real environment
+    // For now, we'll keep the simulation but make it more realistic
     setMode('camera');
     setScanning(true);
-    // Simulate camera scanning
     setTimeout(() => {
-      const isbns = Object.keys(mockBookLookup);
-      const randomIsbn = isbns[Math.floor(Math.random() * isbns.length)];
+      // Simulation: pick a real ISBN
+      const demoIsbns = ['9780132350884', '9780201633610', '9780262033848'];
+      const randomIsbn = demoIsbns[Math.floor(Math.random() * demoIsbns.length)];
       setBarcode(randomIsbn);
-      setFoundBook(mockBookLookup[randomIsbn]);
       setScanning(false);
-      toast.success('Barcode scanned successfully!');
+      handleScan();
     }, 2000);
   };
 
-  const handleAddBook = () => {
-    toast.success('Book added to library catalog!');
-    setFoundBook(null);
-    setBarcode('');
+  const handleAddBook = async () => {
+    if (!foundBook) return;
+    setLoading(true);
+    try {
+      await booksApi.create({
+        title: foundBook.title,
+        author: foundBook.author,
+        isbn: foundBook.isbn,
+        category: foundBook.category,
+        publisher: foundBook.publisher,
+        year: foundBook.year,
+        pages: foundBook.pages,
+        available: true
+      });
+      toast.success('Book successfully added to library catalog!');
+      setFoundBook(null);
+      setBarcode('');
+    } catch (err) {
+      console.error('Add book error:', err);
+      toast.error('Failed to add book to catalog');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleIssueBook = () => {
-    toast.success('Book issued successfully!');
-    setFoundBook(null);
-    setBarcode('');
+    if (!foundBook) return;
+    if (foundBook.source === 'external') {
+      toast.error('You must add the book to the catalog first before issuing.');
+      return;
+    }
+    // Redirect to issue page with book pre-selected
+    navigate('/admin/issue', { state: { bookId: foundBook.id } });
   };
 
   return (
@@ -110,13 +171,14 @@ const BarcodeScanner: React.FC = () => {
                 className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 onKeyDown={(e) => e.key === 'Enter' && handleScan()}
               />
-              <LibButton onClick={handleScan} className="flex items-center gap-2">
-                <Search className="h-4 w-4" /> Look Up
+              <LibButton onClick={handleScan} disabled={loading} className="flex items-center gap-2">
+                {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                Look Up
               </LibButton>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <p className="text-xs text-muted-foreground w-full mb-1">Try these demo ISBNs:</p>
-              {Object.keys(mockBookLookup).map((isbn) => (
+              {['9780132350884', '9780201633610', '9780262033848'].map((isbn) => (
                 <button key={isbn} onClick={() => { setBarcode(isbn); }} className="text-xs px-2 py-1 rounded bg-secondary text-foreground hover:bg-secondary/80">
                   {isbn}
                 </button>
@@ -130,9 +192,9 @@ const BarcodeScanner: React.FC = () => {
           <LibCard className="border-accent/50">
             <div className="flex items-start justify-between mb-4">
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-500" /> Book Found
+                <CheckCircle className="h-4 w-4 text-green-500" /> Book Found {foundBook.source === 'library' && <LibBadge variant="available">In Catalog</LibBadge>}
               </h3>
-              <LibBadge variant="available">{foundBook.category}</LibBadge>
+              <LibBadge variant="default">{foundBook.category}</LibBadge>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
@@ -150,11 +212,18 @@ const BarcodeScanner: React.FC = () => {
               ))}
             </div>
             <div className="flex gap-3 mt-4">
-              <LibButton onClick={handleAddBook} className="flex items-center gap-2">
-                <Plus className="h-4 w-4" /> Add to Catalog
-              </LibButton>
-              <LibButton variant="ghost" onClick={handleIssueBook} className="flex items-center gap-2">
-                <BookOpen className="h-4 w-4" /> Issue This Book
+              {foundBook.source === 'external' ? (
+                <LibButton onClick={handleAddBook} disabled={loading} className="flex items-center gap-2">
+                  {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  Add to Catalog
+                </LibButton>
+              ) : (
+                <LibButton onClick={handleIssueBook} className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" /> Issue This Book
+                </LibButton>
+              )}
+              <LibButton variant="ghost" onClick={() => setFoundBook(null)} className="flex items-center gap-2">
+                Cancel
               </LibButton>
             </div>
           </LibCard>

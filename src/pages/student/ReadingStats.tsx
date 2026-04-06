@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { BarChart3, BookOpen, Clock, TrendingUp, Calendar, PieChart as PieChartIcon, Loader2 } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { BarChart3, BookOpen, Clock, TrendingUp, Calendar, PieChart as PieChartIcon, Loader2, Brain, Sparkles } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import LibCard from '@/components/ui/LibCard';
 import { 
@@ -10,9 +10,14 @@ import { useQuery } from '@tanstack/react-query';
 import { goalsApi, borrowApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import LibBadge from '@/components/ui/LibBadge';
+import aiBackend from '@/services/aiBackend';
+import LibButton from '@/components/ui/LibButton';
+import toast from 'react-hot-toast';
 
 const ReadingStats: React.FC = () => {
   const { user } = useAuth();
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<any>(null);
 
   const { data: goalsData, isLoading: isGoalsLoading } = useQuery({
     queryKey: ['reading-goals', user?.uid],
@@ -28,6 +33,49 @@ const ReadingStats: React.FC = () => {
 
   const history = borrowData?.data || [];
   const completedBooks = history.filter((b: any) => b.status === 'returned').length;
+
+  const handleAIAnalyze = async () => {
+    if (!user || history.length === 0) {
+      toast.error('Not enough data to analyze yet. Borrow some books first!');
+      return;
+    }
+    
+    setIsAnalyzing(true);
+    try {
+      const stats = {
+        userId: user.uid,
+        history: history.map((b: any) => ({
+          title: b.book?.title,
+          category: b.book?.category,
+          status: b.status,
+          date: b.issuedAt
+        })),
+        completedCount: completedBooks,
+        categories: Array.from(new Set(history.map((b: any) => b.book?.category)))
+      };
+
+      const result = await aiBackend.analyzeReadingStats(stats, {
+        userId: user.uid,
+        userEmail: user.email,
+        subType: 'reading_velocity_analysis',
+        prompt: `Analyze reading patterns for student: ${user.name}`
+      });
+      setAiAnalysis(result);
+      toast.success('AI Insights Generated!');
+    } catch (err) {
+      console.error('AI analysis error:', err);
+      toast.error('Failed to get AI insights');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Auto-analyze if no analysis exists
+  useEffect(() => {
+    if (history.length > 0 && !aiAnalysis && !isAnalyzing) {
+      handleAIAnalyze();
+    }
+  }, [history]);
 
   // Dynamic monthly velocity based on history
   const monthlyData = useMemo(() => {
@@ -215,15 +263,70 @@ const ReadingStats: React.FC = () => {
         {/* Learning Journey Card */}
         <LibCard className="p-8 bg-gradient-to-br from-accent/5 to-transparent border-accent/10 relative overflow-hidden">
           <div className="relative z-10">
-            <h3 className="text-xl font-black text-foreground uppercase tracking-tighter mb-4">You're a "Strategic Learner"</h3>
-            <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed mb-6">
-              Based on your borrowing history, you tend to focus on deep technical knowledge with occasional breaks for literature. Your reading speed is 15% faster than last month.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <LibBadge variant="issued">Tech Enthusiast</LibBadge>
-              <LibBadge variant="default">Analytical Mind</LibBadge>
-              <LibBadge variant="default">Consistency King</LibBadge>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-sm font-black text-accent uppercase tracking-[0.2em] flex items-center gap-2">
+                <Brain className="h-4 w-4" /> AI Reading Persona
+              </h3>
+              <LibButton 
+                size="sm" 
+                variant="ghost" 
+                className="h-7 text-[10px] gap-2 border-accent/20"
+                onClick={handleAIAnalyze}
+                disabled={isAnalyzing}
+              >
+                {isAnalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                Refresh Insights
+              </LibButton>
             </div>
+
+            {isAnalyzing ? (
+              <div className="py-8 space-y-4">
+                <div className="h-8 bg-accent/10 rounded-lg w-1/3 animate-pulse" />
+                <div className="h-20 bg-accent/5 rounded-lg w-full animate-pulse" />
+              </div>
+            ) : aiAnalysis ? (
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <h3 className="text-2xl font-black text-foreground uppercase tracking-tighter mb-4">
+                  You're a "{aiAnalysis.readingPersona || 'Strategic Learner'}"
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
+                  <div className="space-y-3">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-1">Your Strengths</p>
+                    <div className="flex flex-wrap gap-2">
+                      {aiAnalysis.strengths?.map((s: string, i: number) => (
+                        <LibBadge key={i} variant="available" className="text-[9px] uppercase font-bold">{s}</LibBadge>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-1">Growth Areas</p>
+                    <div className="flex flex-wrap gap-2">
+                      {aiAnalysis.suggestions?.map((s: string, i: number) => (
+                        <LibBadge key={i} variant="default" className="text-[9px] uppercase font-bold">{s}</LibBadge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="p-4 bg-background/50 rounded-xl border border-border/50">
+                  <p className="text-xs text-muted-foreground leading-relaxed italic">
+                    "AI insight: Based on your ${aiAnalysis.genreDiversity}% genre diversity score, 
+                    we recommend exploring ${aiAnalysis.monthlyGoals?.[0] || 'more'} books in new categories next month."
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h3 className="text-xl font-black text-foreground uppercase tracking-tighter mb-4">You're a "Strategic Learner"</h3>
+                <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed mb-6">
+                  Based on your borrowing history, you tend to focus on deep technical knowledge with occasional breaks for literature. Your reading speed is 15% faster than last month.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <LibBadge variant="issued">Tech Enthusiast</LibBadge>
+                  <LibBadge variant="default">Analytical Mind</LibBadge>
+                  <LibBadge variant="default">Consistency King</LibBadge>
+                </div>
+              </div>
+            )}
           </div>
           <div className="absolute -bottom-10 -right-10 opacity-5">
             <TrendingUp className="h-64 w-64" />

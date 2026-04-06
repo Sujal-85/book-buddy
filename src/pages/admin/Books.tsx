@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { bookSchema, type BookFormData } from '@/utils/validators';
@@ -33,6 +34,7 @@ const categories = ['All', 'Programming', 'Computer Science', 'AI', 'Database', 
 const availabilities = ['All', 'Available', 'Issued', 'Overdue'];
 
 const AdminBooks: React.FC = () => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [availability, setAvailability] = useState('All');
@@ -140,7 +142,14 @@ const AdminBooks: React.FC = () => {
         <div className="flex items-center gap-2">
           <button onClick={() => { setEditBook(b); setShowAddModal(true); }} className="p-1 hover:bg-secondary rounded text-muted-foreground"><Edit2 className="h-4 w-4" /></button>
           <button onClick={() => setDeleteBook(b)} className="p-1 hover:bg-secondary rounded text-destructive"><Trash2 className="h-4 w-4" /></button>
-          <LibButton size="sm" variant="secondary"><BookPlus className="h-3 w-3 mr-1" /> Issue</LibButton>
+          <LibButton 
+            size="sm" 
+            variant="secondary" 
+            onClick={() => navigate('/admin/issue', { state: { bookId: b.id } })}
+            disabled={b.availableCopies === 0}
+          >
+            <BookPlus className="h-3 w-3 mr-1" /> Issue
+          </LibButton>
         </div>
       ),
     },

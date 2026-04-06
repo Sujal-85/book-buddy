@@ -8,6 +8,11 @@ import toast from 'react-hot-toast';
 import { getBookRecommendations, BookRecommendation } from '@/services/aiBackend';
 import { useCategories } from '@/hooks/useCategories';
 import { useBooks } from '@/hooks/useBooks';
+import { useAuth } from '@/context/AuthContext';
+import { useIssueBook } from '@/hooks/useBorrow';
+import { addDays } from 'date-fns';
+import { useQuery } from '@tanstack/react-query';
+import { borrowApi } from '@/services/api';
 
 interface Recommendation extends BookRecommendation {
   id: string;
@@ -17,7 +22,9 @@ interface Recommendation extends BookRecommendation {
 }
 
 const AIRecommendations: React.FC = () => {
-  const storageKey = 'ai_recommendations_history';
+  const { user } = useAuth();
+  const issueBook = useIssueBook();
+  const storageKey = `ai_recommendations_history_${user?.uid || 'guest'}`;
 
   const [loading, setLoading] = useState(false);
   const [recommendations, setRecommendations] = useState<Recommendation[]>(() => {
@@ -31,6 +38,21 @@ const AIRecommendations: React.FC = () => {
   const { data: catList = [] } = useCategories();
   const { data: allBooks = [] } = useBooks();
 
+  const { data: borrowData } = useQuery({
+    queryKey: ['borrow-history', user?.uid],
+    queryFn: () => borrowApi.getStudentBorrows(user?.uid || ''),
+    enabled: !!user?.uid,
+  });
+
+  const studentHistory = useMemo(() => {
+    return borrowData?.data?.map((b: any) => ({
+      title: b.book?.title,
+      author: b.book?.author,
+      category: b.book?.category,
+      status: b.status
+    })) || [];
+  }, [borrowData]);
+
   const filteredGenres = useMemo(() => {
     return catList.filter(g => g.toLowerCase().includes(genSearch.toLowerCase()));
   }, [catList, genSearch]);
@@ -43,12 +65,21 @@ const AIRecommendations: React.FC = () => {
     
     setLoading(true);
     try {
-      // Pass libraryBooks for strict recommendation logic
+      const context = {
+        userId: user?.uid,
+        userEmail: user?.email,
+        subType: 'personalized_discovery',
+        prompt: `Preferences: ${preferences || 'interests'}. Genres: ${selectedGenres.join(', ')}.`
+      };
+
+      // Pass libraryBooks and studentHistory for strict recommendation logic
       const result = await getBookRecommendations(
-        preferences || 'books based on my interests',
+        preferences || 'books based on my interests and history',
         selectedGenres,
         6,
-        allBooks
+        allBooks,
+        studentHistory,
+        context
       );
       
       const transformed: Recommendation[] = result.map((book, index) => {
@@ -76,6 +107,19 @@ const AIRecommendations: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleBorrow = (bookId: string) => {
+    if (!user?.isProfileComplete) {
+      toast.error('Please complete your profile to borrow books');
+      return;
+    }
+    
+    issueBook.mutate({
+      studentId: user.uid,
+      bookId,
+      dueDate: addDays(new Date(), 14).toISOString(),
+    });
   };
 
   const toggleGenre = (genre: string) => {
@@ -190,7 +234,14 @@ const AIRecommendations: React.FC = () => {
                 <p className="text-xs text-muted-foreground italic line-clamp-2 min-h-[2rem]">💡 {book.matchReason}</p>
                 <p className="text-xs text-muted-foreground line-clamp-3">{book.description}</p>
                 <div className="flex gap-2 pt-2">
-                  <LibButton size="sm" className="flex-1 transition-all active:scale-95" onClick={() => toast.success('Borrow request sent!')}>Borrow</LibButton>
+                  <LibButton 
+                    size="sm" 
+                    className="flex-1 transition-all active:scale-95" 
+                    onClick={() => handleBorrow(book.id)}
+                    loading={issueBook.isPending}
+                  >
+                    Borrow
+                  </LibButton>
                   <LibButton size="sm" variant="ghost" className="hover:bg-accent/10 hover:text-accent" onClick={() => toast.success('Added to wishlist!')}><ThumbsUp className="h-3.5 w-3.5" /></LibButton>
                 </div>
               </LibCard>

@@ -1,101 +1,239 @@
-import React, { useState } from 'react';
-import { Upload, Download, FileSpreadsheet, CheckCircle, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Upload, Download, FileSpreadsheet, CheckCircle, AlertTriangle, Sparkles, RefreshCw, FileText } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import LibCard from '@/components/ui/LibCard';
 import LibButton from '@/components/ui/LibButton';
 import LibBadge from '@/components/ui/LibBadge';
+import aiBackend from '@/services/aiBackend';
+import { booksApi } from '@/services/api';
 import toast from 'react-hot-toast';
+
+interface ImportResult {
+  total: number;
+  success: number;
+  failed: number;
+  errors: string[];
+  timestamp: string;
+}
 
 const BulkImport: React.FC = () => {
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<null | { total: number; success: number; failed: number; errors: string[] }>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [recentImports, setRecentImports] = useState<ImportResult[]>(() => {
+    const saved = localStorage.getItem('admin_bulk_imports');
+    return saved ? JSON.parse(saved) : [
+      { total: 85, success: 85, failed: 0, errors: [], timestamp: '2025-03-25' },
+      { total: 200, success: 193, failed: 7, errors: ['Row 12: Missing ISBN'], timestamp: '2025-03-15' },
+    ];
+  });
 
-  const handleImport = () => {
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     setImporting(true);
-    setTimeout(() => {
-      setImportResult({ total: 150, success: 142, failed: 8, errors: ['Row 23: Missing ISBN', 'Row 45: Duplicate entry', 'Row 67: Invalid category', 'Row 89: Missing author', 'Row 102: Invalid year format', 'Row 115: ISBN checksum invalid', 'Row 128: Title too long', 'Row 141: Missing publisher'] });
-      setImporting(false);
-      toast.success('Import completed with 142/150 books added!');
-    }, 3000);
-  };
+    setImportResult(null);
 
-  const recentImports = [
-    { date: '2025-03-25', file: 'new_arrivals_march.xlsx', total: 85, success: 85 },
-    { date: '2025-03-15', file: 'donated_books.csv', total: 200, success: 193 },
-    { date: '2025-02-28', file: 'journal_update.xlsx', total: 50, success: 48 },
-  ];
+    try {
+      // 1. Read file content
+      const reader = new FileReader();
+      const content = await new Promise<string>((resolve, reject) => {
+        reader.onload = (event) => resolve(event.target?.result as string);
+        reader.onerror = (error) => reject(error);
+        reader.readAsText(file);
+      });
+
+      // 2. Call AI processing
+      const format = file.name.endsWith('.json') ? 'json' : file.name.endsWith('.csv') ? 'csv' : 'text';
+      const result = await aiBackend.bulkImport(content, format as any, {
+        userId: 'admin',
+        subType: 'file_import',
+        prompt: `Bulk import from file: ${file.name}`
+      });
+      
+      // 3. Process results and save to DB
+      const successes = result.filter(r => r.status === 'valid');
+      const failures = result.filter(r => r.status !== 'valid');
+
+      // Actually create books in DB for valid entries
+      if (successes.length > 0) {
+        await Promise.all(successes.map(book => 
+          booksApi.create({
+            title: book.title,
+            author: book.author,
+            isbn: book.isbn,
+            genre: book.genre,
+            summary: book.description,
+            category: book.genre || 'General'
+          })
+        ));
+      }
+
+      const newImport: ImportResult = {
+        total: result.length,
+        success: successes.length,
+        failed: failures.length,
+        errors: failures.map(f => `${f.title}: ${f.issues?.join(', ') || 'Validation failed'}`),
+        timestamp: new Date().toISOString().split('T')[0]
+      };
+
+      setImportResult(newImport);
+      const updated = [newImport, ...recentImports.slice(0, 4)];
+      setRecentImports(updated);
+      localStorage.setItem('admin_bulk_imports', JSON.stringify(updated));
+      toast.success(`AI processing complete: ${newImport.success}/${newImport.total} records imported.`);
+    } catch (err) {
+      console.error('Import error:', err);
+      toast.error('Failed to process bulk import');
+    } finally {
+      setImporting(false);
+      // Reset input
+      e.target.value = '';
+    }
+  };
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <PageHeader title="Bulk Import / Export" description="Import books from Excel/CSV files or export your catalog" />
-      <div className="flex-1 overflow-y-auto space-y-6 pr-1">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Import */}
-          <LibCard className="space-y-4">
-            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Upload className="h-4 w-4 text-accent" /> Import Books</h3>
-            <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
-              {importing ? (
-                <div className="space-y-3">
-                  <FileSpreadsheet className="h-10 w-10 text-accent mx-auto animate-pulse" />
-                  <p className="text-sm text-foreground">Processing file...</p>
-                  <div className="w-full h-2 bg-secondary rounded-full"><div className="h-2 bg-accent rounded-full animate-pulse" style={{ width: '70%' }} /></div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <Upload className="h-10 w-10 text-muted-foreground mx-auto" />
-                  <p className="text-sm text-foreground">Drop Excel/CSV file here or click to browse</p>
-                  <p className="text-xs text-muted-foreground">Supports .xlsx, .xls, .csv formats</p>
-                  <LibButton onClick={handleImport}>Select & Import File</LibButton>
-                </div>
-              )}
-            </div>
-            <LibButton variant="ghost" size="sm" className="w-full flex items-center gap-2 justify-center"><Download className="h-4 w-4" /> Download Template</LibButton>
-          </LibCard>
-
-          {/* Export */}
-          <LibCard className="space-y-4">
-            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Download className="h-4 w-4 text-accent" /> Export Catalog</h3>
-            <div className="space-y-3">
-              {['Full Catalog (37,419 books)', 'Available Books Only', 'Issued Books Only', 'Overdue Records', 'Member Directory'].map((item) => (
-                <LibButton key={item} variant="ghost" className="w-full justify-start text-left" size="sm" onClick={() => toast.success(`Exporting: ${item}`)}>
-                  <FileSpreadsheet className="h-4 w-4 mr-2" /> {item}
-                </LibButton>
-              ))}
-            </div>
-          </LibCard>
-        </div>
-
-        {/* Import Result */}
-        {importResult && (
-          <LibCard className="border-accent/50">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Import Result</h3>
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="text-center p-3 bg-secondary rounded-lg"><p className="text-lg font-bold text-foreground">{importResult.total}</p><p className="text-xs text-muted-foreground">Total Rows</p></div>
-              <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg"><p className="text-lg font-bold text-green-600">{importResult.success}</p><p className="text-xs text-muted-foreground">Imported</p></div>
-              <div className="text-center p-3 bg-red-50 dark:bg-red-900/20 rounded-lg"><p className="text-lg font-bold text-red-600">{importResult.failed}</p><p className="text-xs text-muted-foreground">Failed</p></div>
-            </div>
-            {importResult.errors.length > 0 && (
-              <div className="space-y-1">{importResult.errors.map((e) => <p key={e} className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> {e}</p>)}</div>
-            )}
-          </LibCard>
-        )}
-
-        {/* Recent Imports */}
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Recent Imports</h3>
-          <div className="space-y-2">
-            {recentImports.map((r) => (
-              <LibCard key={r.date} className="flex items-center justify-between">
+      <PageHeader title="AI Bulk Cataloging" description="Agentic file processing for automated library data entry" />
+      <div className="flex-1 overflow-y-auto space-y-6 pr-1 pb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Import Area */}
+          <div className="lg:col-span-2 space-y-6">
+            <LibCard>
+              <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
-                  <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
-                  <div><p className="text-sm font-medium text-foreground">{r.file}</p><p className="text-xs text-muted-foreground">{r.date}</p></div>
+                  <div className="p-2 bg-accent/10 rounded-lg">
+                    <FileSpreadsheet className="h-5 w-5 text-accent" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-widest text-foreground">Import Engine</h3>
+                    <p className="text-[10px] text-muted-foreground font-bold">SUPPORTED: .CSV, .JSON, .TXT</p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <LibBadge variant="available">{r.success}/{r.total} imported</LibBadge>
-                  <CheckCircle className="h-4 w-4 text-green-500" />
+                <LibButton variant="ghost" size="sm" className="text-[10px] font-black uppercase tracking-tighter">
+                  <Download className="h-3 w-3 mr-1.5" /> Get Template
+                </LibButton>
+              </div>
+
+              <div 
+                className={`border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-300 relative ${
+                  importing ? 'border-accent bg-accent/5' : 'border-border bg-secondary/10 hover:border-accent/30'
+                }`}
+              >
+                <input 
+                  type="file" 
+                  accept=".csv,.json,.txt"
+                  onChange={handleImport}
+                  disabled={importing}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                />
+                {importing ? (
+                  <div className="space-y-6">
+                    <div className="relative w-20 h-20 mx-auto">
+                      <div className="absolute inset-0 bg-accent/20 rounded-full animate-ping" />
+                      <div className="relative z-10 w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center">
+                        <RefreshCw className="h-10 w-10 text-accent animate-spin" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-black text-foreground uppercase tracking-widest">Processing Dataset...</p>
+                      <p className="text-[10px] text-muted-foreground font-bold italic">AI Agent is verifying ISBNs and categorizing metadata</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="w-20 h-20 mx-auto bg-secondary rounded-full flex items-center justify-center group-hover:bg-accent/10 transition-colors">
+                      <Upload className="h-10 w-10 text-muted-foreground group-hover:text-accent transition-colors" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-foreground uppercase tracking-widest">Upload Data Source</p>
+                      <p className="text-xs text-muted-foreground mt-1">Click or drag your spreadsheet (.csv, .json, .txt)</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </LibCard>
+
+            {importResult && (
+              <LibCard className="border-accent/40 bg-accent/5 overflow-hidden">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-foreground flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" /> Processing Report
+                  </h3>
+                  <LibBadge variant="default" className="bg-accent/10 text-accent border-none">{importResult.timestamp}</LibBadge>
                 </div>
+                
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="p-4 bg-background/50 rounded-xl border border-border/50 text-center">
+                    <p className="text-2xl font-black text-foreground">{importResult.total}</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">Total Scanned</p>
+                  </div>
+                  <div className="p-4 bg-green-500/5 rounded-xl border border-green-500/20 text-center">
+                    <p className="text-2xl font-black text-green-500">{importResult.success}</p>
+                    <p className="text-[10px] font-bold text-green-600/80 uppercase tracking-tighter">Synchronized</p>
+                  </div>
+                  <div className="p-4 bg-red-500/5 rounded-xl border border-red-500/20 text-center">
+                    <p className="text-2xl font-black text-red-500">{importResult.failed}</p>
+                    <p className="text-[10px] font-bold text-red-600/80 uppercase tracking-tighter">Validation Errors</p>
+                  </div>
+                </div>
+
+                {importResult.errors.length > 0 && (
+                  <div className="space-y-2 bg-background/40 p-4 rounded-xl border border-border">
+                    <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-2 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Error Manifest
+                    </p>
+                    <div className="max-h-32 overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+                      {importResult.errors.map((error, idx) => (
+                        <p key={idx} className="text-[10px] text-muted-foreground font-mono bg-red-500/5 p-1.5 rounded">{error}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </LibCard>
-            ))}
+            )}
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            <LibCard>
+              <h3 className="text-sm font-black uppercase tracking-widest text-foreground mb-4">Export Catalog</h3>
+              <div className="space-y-2">
+                {[
+                  { label: 'Full Collection', count: '12,450', color: 'text-blue-500' },
+                  { label: 'Issued Logs', count: '890', color: 'text-orange-500' },
+                  { label: 'Member Database', count: '2,100', color: 'text-green-500' }
+                ].map((item) => (
+                  <button key={item.label} className="w-full flex items-center justify-between p-3 rounded-xl bg-secondary/20 hover:bg-secondary/40 transition-colors border border-transparent hover:border-border group">
+                    <div className="flex items-center gap-3">
+                      <FileText className={`h-4 w-4 ${item.color}`} />
+                      <span className="text-xs font-bold text-muted-foreground group-hover:text-foreground">{item.label}</span>
+                    </div>
+                    <span className="text-[10px] font-black text-foreground/50">{item.count}</span>
+                  </button>
+                ))}
+              </div>
+            </LibCard>
+
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-foreground px-1 mb-4">Audit Logs</h3>
+              <div className="space-y-3">
+                {recentImports.map((r, idx) => (
+                  <div key={idx} className="p-4 bg-background border border-border rounded-2xl flex items-center justify-between hover:border-accent/40 transition-colors shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
+                        <CheckCircle className="h-4 w-4 text-accent" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-foreground uppercase tracking-tighter">AI LOG #{1000 + idx}</p>
+                        <p className="text-[9px] text-muted-foreground font-bold">{r.timestamp}</p>
+                      </div>
+                    </div>
+                    <LibBadge variant="available" className="text-[9px] font-black px-2">{r.success} OK</LibBadge>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>

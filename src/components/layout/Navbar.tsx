@@ -4,12 +4,8 @@ import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import NotificationPanel from '@/components/notifications/NotificationPanel';
 import { Link, useLocation } from 'react-router-dom';
-import {
-  LayoutDashboard, BookOpen, Users, BookPlus, RotateCcw, AlertTriangle,
-  Settings, Home, Library, History, User, LogOut, ScanBarcode, Brain,
-  Camera, Calculator, Wand2, Upload, BarChart3, Bell as BellIcon, FileText, MapPin,
-  Sparkles, Mic, Target, Bot, Star, Heart, QrCode, TrendingUp, BellRing, FileSearch,
-} from 'lucide-react';
+import { adminLinks, studentLinks } from '@/constants/navigation';
+import { LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import famtLogo from '@/assets/famt-logo.png';
 import {
@@ -24,38 +20,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-const adminLinks = [
-  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/admin/books', label: 'Books', icon: BookOpen },
-  { to: '/admin/members', label: 'Members', icon: Users },
-  { to: '/admin/issue', label: 'Issue Book', icon: BookPlus },
-  { to: '/admin/return', label: 'Return Book', icon: RotateCcw },
-  { to: '/admin/overdue', label: 'Overdue', icon: AlertTriangle },
-  { to: '/admin/settings', label: 'Settings', icon: Settings },
-];
-
-const studentLinks = [
-  { to: '/student', label: 'Home', icon: Home },
-  { to: '/student/books', label: 'Browse Books', icon: BookOpen },
-  { to: '/student/mybooks', label: 'My Books', icon: Library },
-  { to: '/student/history', label: 'History', icon: History },
-  { to: '/student/goals', label: 'Reading Goals', icon: Target },
-  { to: '/student/stats', label: 'Reading Stats', icon: TrendingUp },
-  { to: '/student/reviews', label: 'Book Reviews', icon: Star },
-  { to: '/student/wishlist', label: 'Wishlist', icon: Heart },
-  { to: '/student/qr-borrow', label: 'QR Borrow', icon: QrCode },
-  { to: '/student/summary', label: 'AI Summary', icon: FileSearch },
-  { to: '/student/companion', label: 'AI Study Companion', icon: Bot },
-  { to: '/student/recommendations', label: 'AI Picks', icon: Sparkles },
-  { to: '/student/alerts', label: 'Availability Alerts', icon: BellRing },
-  { to: '/student/profile', label: 'Profile', icon: User },
-];
+import { useUI } from '@/context/UIContext';
 
 const Navbar: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+  const { mobileMenuOpen, setMobileMenuOpen } = useUI();
   const [showNotifications, setShowNotifications] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const links = user?.role === 'admin' ? adminLinks : studentLinks;
 

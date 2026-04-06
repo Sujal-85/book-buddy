@@ -71,12 +71,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (userDoc.exists()) {
             const data = userDoc.data();
             
-            // Fixed Admin Check - Ensure admin@famt.ac.in is ALWAYS an admin
+            // Fixed Admin Check - Ensure admin@famt.ac.in is ALWAYS an admin with a proper name
             let role = data.role || 'student';
             if (fbUser.email === 'admin@famt.ac.in') {
               role = 'admin';
-              if (data.role !== 'admin') {
-                await updateDoc(doc(db, 'users', fbUser.uid), { role: 'admin' });
+              const updates: any = {};
+              if (data.role !== 'admin') updates.role = 'admin';
+              // If name is missing or the generic 'User', set it to 'Librarian'
+              if (!data.name || data.name === 'User') {
+                updates.name = 'Librarian';
+                data.name = 'Librarian'; // Update local data object too
+              }
+              
+              if (Object.keys(updates).length > 0) {
+                await updateDoc(doc(db, 'users', fbUser.uid), updates);
               }
             }
             
@@ -98,7 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const userData: AuthUser = {
               uid: fbUser.uid,
               email: fbUser.email,
-              name: data.name || fbUser.displayName || 'User',
+              name: data.name || fbUser.displayName || (fbUser.email === 'admin@famt.ac.in' ? 'Librarian' : 'User'),
               role: fbUser.email === 'admin@famt.ac.in' ? 'admin' : (data.role || 'student'),
               studentId: data.studentId || `STU-${fbUser.uid.slice(0, 6).toUpperCase()}`,
               phone: data.phone || fbUser.phoneNumber,
@@ -121,7 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const userData: AuthUser = {
               uid: fbUser.uid,
               email: fbUser.email,
-              name: fbUser.displayName || 'User',
+              name: fbUser.displayName || (fbUser.email === 'admin@famt.ac.in' ? 'Librarian' : 'User'),
               role: fbUser.email === 'admin@famt.ac.in' ? 'admin' : 'student',
               phone: fbUser.phoneNumber,
               photoURL: fbUser.photoURL,

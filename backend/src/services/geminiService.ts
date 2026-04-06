@@ -1,97 +1,161 @@
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import dotenv from 'dotenv';
 import { createRequire } from 'module';
+
 const require = createRequire(import.meta.url);
-const pdf = require('pdf-parse');
+// Handle both CJS and ESM import patterns for pdf-parse
+const pdfLib = require('pdf-parse');
+const pdf = typeof pdfLib === 'function' ? pdfLib : pdfLib.default;
+
 dotenv.config();
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
-if (!GEMINI_API_KEY) {
-  console.error('❌ GEMINI_API_KEY is not set in environment variables');
-}
-
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
-// Model configurations for different use cases
 export const MODELS = {
-  // Fast, efficient model for simple tasks
+  // Balanced, fast, and cost-efficient for high-volume tasks
   FLASH: 'gemini-2.5-flash',
-  // Powerful model for complex reasoning
-  PRO: 'gemini-3-flash-preview',
-  // Latest model with best performance
-  PRO_LATEST: 'gemini-2.5-pro',
+  
+  // High-intelligence flagship model for complex reasoning
+  PRO: 'gemini-2.5-flash',
+  
+  // Experimental/Latest cutting-edge performer
+  PRO_LATEST: 'gemini-3-pro-preview', 
 };
 
 class GeminiService {
+  private genAI: GoogleGenerativeAI | null = null;
   private models: Map<string, GenerativeModel> = new Map();
 
-  constructor() {
-    this.initializeModels();
+  private getGenAI(): GoogleGenerativeAI {
+    if (!this.genAI) {
+      // Configuration is already called by dotenv.config() at the top of file
+      const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_LOCAL;
+      
+      if (!apiKey) {
+        console.error('❌ CRITICAL: GEMINI_API_KEY is not set.');
+        throw new Error('GEMINI_API_KEY is missing. In local development, check your .env file. In Firebase production, ensure the secret is set using "firebase functions:secrets:set GEMINI_API_KEY".');
+      }
+      
+      this.genAI = new GoogleGenerativeAI(apiKey);
+      console.log('🚀 Gemini AI Service initialized successfully.');
+    }
+    return this.genAI;
   }
 
-  private initializeModels() {
-    Object.entries(MODELS).forEach(([key, modelName]) => {
-      this.models.set(key, genAI.getGenerativeModel({ model: modelName }));
-    });
+  constructor() {
+    // Models are initialized lazily in getModel() to ensure env vars are available
   }
 
   getModel(modelKey: keyof typeof MODELS = 'FLASH'): GenerativeModel {
-    const model = this.models.get(modelKey);
+    let model = this.models.get(modelKey);
     if (!model) {
-      throw new Error(`Model ${modelKey} not found`);
+      const genAI = this.getGenAI();
+      const modelName = MODELS[modelKey];
+      model = genAI.getGenerativeModel({ model: modelName });
+      this.models.set(modelKey, model);
     }
     return model;
   }
 
   // A. Chat/Conversation
-  async chat(message: string, history: Array<{role: string, parts: string}> = [], modelKey: keyof typeof MODELS = 'PRO') {
-    const model = this.getModel(modelKey);
-    const chat = model.startChat({
-      history: history.map(h => ({
-        role: h.role,
-        parts: [{ text: h.parts }]
-      })),
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2048,
-      }
-    });
+  async chat(message: string, history: Array<{role: string, parts: string}> = [], modelKey: keyof typeof MODELS = 'FLASH') {
+    try {
+      const model = this.getModel(modelKey);
+      const chat = model.startChat({
+        history: history.map(h => ({
+          role: h.role,
+          parts: [{ text: h.parts }]
+        })),
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2048,
+        }
+      });
 
-    const result = await chat.sendMessage(message);
-    return result.response.text();
+      const result = await chat.sendMessage(message);
+      return result.response.text();
+    } catch (error: any) {
+      console.error('Gemini Chat Error:', error.message);
+      
+      if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('limit')) {
+        console.warn('⚠️ QUOTA EXCEEDED: Using Mock Chat Fallback.');
+        return "I'm currently in 'Lite Mode' due to high API traffic (Quota 429). I can still help with basic questions! How can I assist you with your library needs?";
+      }
+      throw error;
+    }
   }
 
   // B. Text Summarization
-  async summarize(text: string, maxLength: number = 500, modelKey: keyof typeof MODELS = 'FLASH') {
-    const model = this.getModel(modelKey);
-    const prompt = `Summarize the following text in ${maxLength} characters or less. Be concise and capture the main points:
+  async summarize(text: string, maxLength: number = 2000, modelKey: keyof typeof MODELS = 'PRO') {
+    try {
+      const model = this.getModel(modelKey);
+      const prompt = `
+        Summarize the following text provided below.
+        
+        ### 🎨 STYLE & STRUCTURE (MANDATORY):
+        - Output strictly in **Premium Markdown** format.
+        - Use H2 (##) for main headings and H3 (###) for sub-sections.
+        - Use **Bold** for critical keywords and *Italic* for subtle emphasis.
+        - Use a **Detailed Table** to compare key concepts or list pros/cons if applicable.
+        - Use **Blockquotes (>)** for profound "Aha!" moments or direct quotes.
+        - Use **Bullet points (•)** and **Numbered lists (1.)** for clarify.
+        - Incorporate relevant emojis (🚀, 💡, 🧠, 📚) to enhance readability.
+        - Add a horizontal rule (---) between major sections.
 
-${text}`;
-    
-    const result = await model.generateContent(prompt);
-    return result.response.text();
+        ### 🧱 OUTPUT SECTIONS:
+        1. **Executive Insight**: A high-impact 2-3 sentence overview.
+        2. **Core Pillars**: Use a table or bulleted list for the foundation of the text.
+        3. **Deep Dive Analysis**: Break down complex parts into structured sub-sections.
+        4. **Actionable Takeaways**: List 3-4 things the reader can DO with this info.
+        5. **Critical Thinking**: 2 review questions to master the content.
+        
+        ### 📄 TEXT CONTENT:
+        ${text.slice(0, 15000)}
+      `;
+      
+      const result = await model.generateContent(prompt);
+      const textResponse = result.response.text();
+      
+      // Clean up markdown code block wrappers if present
+      return textResponse.replace(/^```markdown\n/, '').replace(/```$/, '').trim();
+    } catch (error: any) {
+      if (error.message?.includes('429')) {
+        return text.slice(0, 1000) + "\n\n**Note: Summary limited due to API quota. Please try again soon.**";
+      }
+      throw error;
+    }
   }
 
   // C. Book Recommendations (Strict Database-Only)
-  async getBookRecommendations(preferences: string, genres: string[] = [], count: number = 5, libraryBooks: any[] = []) {
-    const model = this.getModel('PRO');
+  async getBookRecommendations(preferences: string, genres: string[] = [], count: number = 5, libraryBooks: any[] = [], studentHistory: any[] = []) {
+    const model = this.getModel('FLASH');
     
     // Prepare library context (limit to top 50 for token efficiency if too many)
     const context = libraryBooks.slice(0, 50).map(b => 
       `- ${b.title} by ${b.author} [Category: ${b.category || 'General'}] (Available: ${b.available})`
     ).join('\n');
 
+    // Prepare student history context
+    const historyContext = studentHistory.length > 0 
+      ? studentHistory.map(h => `- ${h.title} (${h.category}) - Status: ${h.status}`).join('\n')
+      : "No previous borrowing history.";
+
     const prompt = `
-      As a specialized Library AI Assistant, your task is to recommend ${count} books from our ACTUAL library database based on these preferences: "${preferences}" ${genres.length > 0 ? 'and genres: ' + genres.join(', ') : ''}.
+      As a specialized Library AI Assistant, your task is to recommend ${count} books from our ACTUAL library database based on these student details:
+      
+      ### 👤 STUDENT PROFILE:
+      - Preferences: "${preferences}"
+      - Genres of interest: ${genres.length > 0 ? genres.join(', ') : 'Not specified'}
+      - Borrowing History:
+      ${historyContext}
 
       ### 📚 YOUR LIBRARY DATABASE (ONLY RECOMMEND FROM THESE):
       ${context || 'No books provided in context.'}
 
       ### 🏠 RULES:
       1. **STRICT DATABASE ONLY**: You MUST NOT recommend any book that is not in the list provided above.
-      2. **Hallucination Check**: If you cannot find a good match in the list, provide the closest possible match from the list and explain why it's the best choice currently available, or suggest a broader category from the list.
-      3. **Availability**: You can recommend unavailable books but must note they are currently checked out.
-      4. **Response Format**: You MUST return a valid JSON array of objects.
+      2. **Personalization**: Use the student's history to avoid recommending books they have already read (unless they are part of a series) and to better match their taste.
+      3. **Hallucination Check**: If you cannot find a good match in the list, provide the closest possible match from the list and explain why it's the best choice currently available.
+      4. **Availability**: You can recommend unavailable books but must note they are currently checked out.
+      5. **Response Format**: You MUST return a valid JSON array of objects.
 
       ### 📝 OUTPUT FORMAT (JSON ONLY):
       [
@@ -99,7 +163,7 @@ ${text}`;
           "title": "Book Title",
           "author": "Author Name",
           "description": "2-3 sentence summary of the book's content",
-          "matchReason": "Why this specific book from our database matches your request",
+          "matchReason": "Why this specific book from our database matches your request and history",
           "category": "The category from the database"
         }
       ]
@@ -121,7 +185,26 @@ ${text}`;
       
       // Fallback: try parsing the whole cleaned text
       return JSON.parse(cleanedText);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.message?.includes('429')) {
+        console.warn('⚠️ QUOTA EXCEEDED: Using Recommendations Mock Fallback.');
+        return [
+          { 
+            title: "Artificial Intelligence: A Modern Approach", 
+            author: "Stuart Russell", 
+            description: "A comprehensive guide to the theory and practice of AI.",
+            matchReason: "Highly relevant to your interest in technology and AI.",
+            category: "Technology"
+          },
+          { 
+            title: "Clean Code", 
+            author: "Robert C. Martin", 
+            description: "Essential reading for writing maintainable and clear software.",
+            matchReason: "Suggested for students focused on branch excellence.",
+            category: "Computer Science"
+          }
+        ];
+      }
       console.error('Error in getBookRecommendations:', error);
       throw new Error('Failed to generate valid library recommendations');
     }
@@ -129,8 +212,9 @@ ${text}`;
 
   // D. Voice Search Query Processing
   async processVoiceQuery(transcript: string) {
-    const model = this.getModel('PRO');
-    const prompt = `Process this voice search query for a library system and extract search parameters:
+    try {
+      const model = this.getModel('FLASH');
+      const prompt = `Process this voice search query for a library system and extract search parameters:
 "${transcript}"
 
 Return a JSON object with:
@@ -141,34 +225,59 @@ Return a JSON object with:
 - intent: one of [search, borrow, return, info, recommendation]
 - confidence: number 0-1`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    
-    try {
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
       }
       return { searchTerms: transcript, intent: 'search', confidence: 0.5 };
-    } catch {
-      return { searchTerms: transcript, intent: 'search', confidence: 0.5 };
+    } catch (error: any) {
+      if (error.message?.includes('429')) {
+        console.warn('⚠️ QUOTA EXCEEDED: Using Voice Parser Fallback.');
+        // Simple regex fallback
+        const lower = transcript.toLowerCase();
+        let intent = 'search';
+        if (lower.includes('borrow') || lower.includes('issue')) intent = 'borrow';
+        else if (lower.includes('return') || lower.includes('give back')) intent = 'return';
+        else if (lower.includes('recommend') || lower.includes('suggest')) intent = 'recommendation';
+        
+        return { 
+          searchTerms: transcript, 
+          intent: intent as any, 
+          confidence: 0.9, 
+          isMock: true 
+        };
+      }
+      throw error;
     }
   }
 
   // E. Study Companion / Personalized Tutor
   async studyCompanion(question: string, context?: any) {
-    const model = this.getModel('PRO');
+    const model = this.getModel('FLASH');
     const { userProfile = {}, libraryBooks = [], history = [], fileData = [] } = context || {};
     const libraryContext = (libraryBooks && libraryBooks.length > 0) 
       ? libraryBooks.map((b: any) => `${b.title} by ${b.author} (${b.category})`).join(', ')
       : "No specific books available in the current inventory sample.";
 
+    const historyContext = (history && history.length > 0)
+      ? history.map((h: any) => `- ${h.title} (${h.category}) - Status: ${h.status}`).join('\n')
+      : "No previous borrowing history.";
+
     const systemPrompt = `
       You are the "Master Tutor" of the Book Buddy platform, an elite AI study companion.
       Your mission is to help students (like ${userProfile.name || 'User'}, who is studying ${userProfile.branch || 'their field'}) master subjects using the **Feynman Technique**.
 
-      ---
+      ### 👤 STUDENT PROFILE:
+      - Name: ${userProfile.name || 'User'}
+      - Field of Study: ${userProfile.branch || 'General'}
+      - Recent Reading History:
+      ${historyContext}
 
+      ---
+      
       ### 🎨 FORMATTING REQUIREMENTS (MANDATORY)
       To make your responses "Premium" and "Rich", you MUST use:
       1. **Horizontal Rules (---)**: To separate different segments of your explanation.
@@ -233,13 +342,30 @@ Return a JSON object with:
       });
     }
 
-    const result = await model.generateContent(parts);
-    return result.response.text();
+    try {
+      const result = await model.generateContent(parts);
+      const text = result.response.text();
+      
+      if (!text) {
+        throw new Error('Empty response from AI model');
+      }
+
+      return text;
+    } catch (error: any) {
+      console.error('Gemini Study Companion Error:', error);
+      
+      // Handle clear quota errors
+      if (error.message?.includes('429') || error.message?.includes('quota')) {
+        throw new Error('AI service is temporarily busy due to high demand. Please try again in a minute.');
+      }
+      
+      throw new Error(`AI Study Companion failed: ${error.message || 'Unknown error'}`);
+    }
   }
 
   // F. Book Review Analysis
   async analyzeReviews(reviews: string[]) {
-    const model = this.getModel('PRO');
+    const model = this.getModel('FLASH');
     const reviewsText = reviews.map((r, i) => `Review ${i + 1}: ${r}`).join('\n\n');
     const prompt = `Analyze these book reviews and provide insights:
 
@@ -256,37 +382,48 @@ Return a JSON object with:
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-      return text;
-    } catch {
-      return text;
-    }
+    return this.extractJSON(text) || text;
   }
 
   // G. AI Analytics - Data Analysis
   async analyzeLibraryData(data: any, analysisType: string) {
-    const model = this.getModel('PRO');
-    const prompt = `Analyze this library data and provide ${analysisType} insights:
+    const model = this.getModel('FLASH');
+    const prompt = `
+      Analyze this library data and provide ${analysisType} insights.
+      
+      ### 📊 DATA CONTEXT:
+      ${JSON.stringify(data, null, 2)}
 
-${JSON.stringify(data, null, 2)}
+      ### 🏠 RULES:
+      1. **Return ONLY valid JSON**.
+      2. **Structure**: The response must be a JSON object with the following keys:
+         - "stats": Array of 4 stat objects { label, value, change (e.g. "+5%"), type (circulation|members|duration|accuracy) }
+         - "predictions": Array of 2-4 prediction objects { title, description, confidence (0-100), type (trend|alert|insight|engagement) }
+         - "inventoryAlerts": Array of objects { category, current, needed, urgency (high|medium|low) }
+         - "aiSummary": A detailed markdown summary of the findings (200-300 words).
 
-Provide:
-1. Key findings
-2. Trends identified
-3. Recommendations
-4. Actionable insights for library management`;
+      ### 📝 OUTPUT FORMAT (JSON ONLY):
+      {
+        "stats": [...],
+        "predictions": [...],
+        "inventoryAlerts": [...],
+        "aiSummary": "markdown content..."
+      }
+    `;
 
-    const result = await model.generateContent(prompt);
-    return result.response.text();
+    try {
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      return this.extractJSON(text) || text;
+    } catch (error: any) {
+      console.error('Error in analyzeLibraryData:', error);
+      throw error;
+    }
   }
 
   // H. Damage Detection from Image Description
   async detectDamage(imageDescription: string, bookCondition: string) {
-    const model = this.getModel('PRO');
+    const model = this.getModel('FLASH');
     const prompt = `Analyze this book condition report:
 Image description: ${imageDescription}
 Reported condition: ${bookCondition}
@@ -303,28 +440,25 @@ Return as JSON.`;
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-      return text;
-    } catch {
-      return text;
-    }
+    return this.extractJSON(text) || text;
   }
 
-  // I. Fine Calculation Assistant
-  async calculateFine(overdueDays: number, bookValue: number, bookCondition: string, userHistory: string) {
-    const model = this.getModel('PRO');
-    const prompt = `Calculate an appropriate library fine for:
+  // I. Fine Calculation (Logic-based + Policy)
+  async calculateFine(overdueDays: number, bookValue: number, bookCondition: string, userHistory: string, finePerDay: number = 5) {
+    const model = this.getModel('FLASH');
+    const prompt = `Calculate a fair library fine:
 - Overdue days: ${overdueDays}
-- Book value: $${bookValue}
-- Book condition upon return: ${bookCondition}
-- User borrowing history: ${userHistory}
+- Base fine rate: ₹${finePerDay} per day
+- Book value: ₹${bookValue}
+- Reported damage: ${bookCondition}
+- User's return history: ${userHistory}
 
-Consider standard library fine structures ($0.25-$2 per day overdue, plus damage fees).
-Return JSON with:
+Policy:
+1. Overdue fine: overdueDays * finePerDay
+2. Damage fee: 10-50% of book value depending on severity
+3. History: Apply 20% discount for frequent timely returners or 20% surcharge for repeat offenders.
+
+Return JSON:
 - baseFine: number
 - damageFee: number
 - totalFine: number
@@ -333,20 +467,12 @@ Return JSON with:
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-      return text;
-    } catch {
-      return text;
-    }
+    return this.extractJSON(text) || text;
   }
 
   // J. AI Cataloging - Auto-generate metadata
   async generateCatalogData(bookInfo: { title: string; author: string; description?: string; isbn?: string }) {
-    const model = this.getModel('PRO');
+    const model = this.getModel('FLASH');
     const prompt = `Generate library catalog metadata for:
 Title: ${bookInfo.title}
 Author: ${bookInfo.author}
@@ -364,15 +490,7 @@ Return JSON with:
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-      return text;
-    } catch {
-      return text;
-    }
+    return this.extractJSON(text) || text;
   }
 
   // K. Smart Notifications - Generate personalized message
@@ -391,49 +509,61 @@ Write a friendly, professional message (2-3 sentences) that is personalized and 
 
   // L. AI Reports - Generate report content
   async generateReport(reportType: string, data: any, period: string) {
-    const model = this.getModel('PRO');
-    const prompt = `Generate a ${reportType} library report for the period: ${period}
+    const model = this.getModel('FLASH');
+    const prompt = `
+      Generate a ${reportType} library report for the period: ${period}
 
-Data:
-${JSON.stringify(data, null, 2)}
+      ### 📊 DATA:
+      ${JSON.stringify(data, null, 2)}
 
-Include:
-1. Executive summary
-2. Key metrics and statistics
-3. Notable trends or patterns
-4. Comparison to previous period (if applicable)
-5. Recommendations
+      ### 🧱 STRUCTURE:
+      1. Executive summary
+      2. Key metrics and statistics
+      3. Notable trends or patterns
+      4. Recommendations
 
-Format as professional report content.`;
+      ### 🏠 RULES:
+      1. Return a JSON object with a single key "reportSummary" containing the full markdown report.
+      2. Use professional formatting with headers, tables, and lists.
 
-    const result = await model.generateContent(prompt);
-    return result.response.text();
+      ### 📝 OUTPUT FORMAT:
+      {
+        "reportSummary": "full markdown report..."
+      }
+    `;
+
+    try {
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      return this.extractJSON(text) || { reportSummary: text };
+    } catch (error: any) {
+      console.error('Error in generateReport:', error);
+      throw error;
+    }
   }
 
   // M. Shelf Management - Organization suggestions
   async suggestShelfOrganization(books: any[], constraints: any) {
-    const model = this.getModel('PRO');
+    const model = this.getModel('FLASH');
     const prompt = `Suggest shelf organization for these books:
-Books: ${JSON.stringify(books)}
-Constraints: ${JSON.stringify(constraints)}
+      Books: ${JSON.stringify(books)}
+      Constraints: ${JSON.stringify(constraints)}
 
-Return JSON with:
-- sections: array of shelf sections with name and book ranges
-- rationale: brief explanation of organization logic
-- spaceUtilization: percentage estimate
-- recommendations: array of suggestions for optimization`;
+      Return JSON with:
+      - "sections": Array of shelf sections (name, range)
+      - "rationale": Brief explanation
+      - "recommendations": Top 3 optimizations
+      - "relocations": Array of { book, from, to, reason }
+      
+      Keep the response concise and strictly JSON. Do not include book details other than titles.`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    
     try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-      return text;
-    } catch {
-      return text;
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      return this.extractJSON(text) || { relocations: [], rationale: text };
+    } catch (error: any) {
+      console.error('Error in suggestShelfOrganization:', error);
+      throw error;
     }
   }
 
@@ -457,9 +587,45 @@ Provide:
     return result.response.text();
   }
 
+  // N2. Suggest New Reading Goals
+  async suggestReadingGoals(studentData: any) {
+    const model = this.getModel('FLASH');
+    const prompt = `Based on this student's reading history and performance, suggest 3 highly personalized, SMART reading goals for the next month.
+    
+    ### 📊 STUDENT DATA:
+    ${JSON.stringify(studentData, null, 2)}
+
+    ### 🏠 RULES:
+    1. **Personalization**: If they read many books, suggest a challenge. If they are slow, suggest consistency.
+    2. **Variety**: Suggest goals for volume, diversity (genres), and consistency (streaks).
+    3. **Format**: Return ONLY a JSON array of 3 objects.
+
+    ### 📝 OUTPUT FORMAT (JSON ONLY):
+    [
+      {
+        "title": "Short catchy goal title",
+        "description": "Brief explanation of why this fits them",
+        "target": number (total books to read),
+        "category": "Specific category or 'General'",
+        "difficulty": "Beginner" | "Intermediate" | "Expert"
+      }
+    ]
+
+    Return ONLY the JSON array.`;
+
+    try {
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      return this.extractJSON(text) || [];
+    } catch (error: any) {
+      console.error('Error in suggestReadingGoals:', error);
+      throw error;
+    }
+  }
+
   // O. Reading Stats Analysis
   async analyzeReadingStats(stats: any) {
-    const model = this.getModel('PRO');
+    const model = this.getModel('FLASH');
     const prompt = `Analyze reading statistics and provide insights:
 ${JSON.stringify(stats, null, 2)}
 
@@ -473,20 +639,12 @@ Return JSON with:
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-      return text;
-    } catch {
-      return text;
-    }
+    return this.extractJSON(text) || text;
   }
 
   // P. Student Analytics - Performance insights
   async analyzeStudentPerformance(studentData: any, classData?: any) {
-    const model = this.getModel('PRO');
+    const model = this.getModel('FLASH');
     const prompt = `Analyze student library engagement:
 Student: ${JSON.stringify(studentData)}
 ${classData ? `Class context: ${JSON.stringify(classData)}` : ''}
@@ -519,49 +677,43 @@ Estimate:
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-      return text;
-    } catch {
-      return text;
-    }
+    return this.extractJSON(text) || text;
   }
 
   // R. Bulk Import Processing
   async processBulkImport(booksData: string, format: 'csv' | 'json' | 'text') {
-    const model = this.getModel('PRO');
+    const model = this.getModel('FLASH');
     const prompt = `Process bulk book import data in ${format} format:
 ${booksData}
 
-Extract and return as JSON array with objects containing:
+Extract and return ONLY a JSON array of objects. Each object must have:
 - title (required)
 - author (required)
 - isbn (if available)
 - genre (if available)
 - description (if available)
 - status: 'valid' | 'needs_review' | 'incomplete'
-- issues: array of any problems with this entry`;
+- issues: array of strings describing any problems with this entry (e.g., ["Missing ISBN", "Unknown author"])
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    
+Example output:
+[
+  { "title": "Example", "author": "John Doe", "status": "valid", "issues": [] }
+]`;
+
     try {
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-      return text;
-    } catch {
-      return text;
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const parsed = this.extractJSON(text);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error: any) {
+      console.error('Error in processBulkImport:', error);
+      throw error;
     }
   }
 
   // S. Multi-modal: Analyze image (for damage detection, cover recognition)
   async analyzeImage(imageBase64: string, mimeType: string, promptText: string) {
-    const model = this.getModel('PRO');
+    const model = this.getModel('FLASH');
     
     const result = await model.generateContent([
       promptText,
@@ -578,7 +730,7 @@ Extract and return as JSON array with objects containing:
 
   // T. General Text Generation
   async generateText(prompt: string, temperature: number = 0.7, maxTokens: number = 2048) {
-    const model = this.getModel('PRO');
+    const model = this.getModel('FLASH');
     const result = await model.generateContent({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
@@ -591,10 +743,8 @@ Extract and return as JSON array with objects containing:
 
   // U. PDF Summarization
   async summarizePDF(buffer: Buffer, originalName: string) {
-    const model = this.getModel('PRO');
-    
     try {
-      // 1. Extract text from PDF
+      // 1. Extract text from PDF using the pdf-parse library
       const data = await pdf(buffer);
       const text = data.text;
       
@@ -602,24 +752,80 @@ Extract and return as JSON array with objects containing:
       const truncatedText = text.slice(0, 30000);
 
       const prompt = `
-        Summarize the following document titled "${originalName}".
+        Perform a deep semantic analysis and summarize the document titled "${originalName}".
         
-        ### 📋 INSTRUCTIONS:
-        1. **Executive Summary**: Provide a high-level overview (3-4 sentences).
-        2. **Key Concepts**: List the top 5 most important ideas or chapters.
-        3. **Detailed Breakdown**: Group core information into logical bullet points.
-        4. **Target Audience**: Who would benefit most from this?
-        5. **Study Questions**: Suggest 3 questions to test understanding.
+        ### 🎨 STYLE & STRUCTURE (MANDATORY):
+        - Output strictly in **Premium Markdown** format.
+        - Use H2 (##) for main chapters and H3 (###) for sub-topics.
+        - Use **Bold** for critical concepts and *Italic* for contextual nuances.
+        - Use **Structured Tables** for data, comparisons, or definitions.
+        - Use **Blockquotes (>)** for major insights or summary "Nuggets".
+        - Use **Bullet points** with clear hierarchy.
+        - Incorporate relevant emojis (📊, ✅, 🎓, 📎) for visual mapping.
+        - Add a horizontal rule (---) between major segments.
+
+        ### 🧱 REQUIRED SECTIONS:
+        1. **Abstract Insight**: A 4-sentence high-level overview.
+        2. **Concept Hierarchy Table**: A table mapping Terms to Definitions.
+        3. **Technical Deep Dive**: Logic-based breakdown of the primary chapters.
+        4. **Actionable Strategy**: How to apply this knowledge immediately. 
+        5. **Mastery Check**: 3 challenging questions to test deep understanding.
 
         ### 📄 DOCUMENT CONTENT:
         ${truncatedText}
       `;
 
-      const result = await model.generateContent(prompt);
-      return result.response.text();
+      const model = this.getModel('PRO');
+      const resultAI = await model.generateContent(prompt);
+      const textResponse = resultAI.response.text();
+      
+      // Clean up markdown code block wrappers if present
+      return textResponse.replace(/^```markdown\n/, '').replace(/```$/, '').trim();
     } catch (error) {
       console.error('Error parsing PDF or generating summary:', error);
       throw new Error('Failed to process PDF summary');
+    }
+  }
+
+  // Helper for consistent JSON extraction from AI responses
+  private extractJSON(text: string) {
+    try {
+      // 1. Pre-clean the text for potentially malformed JSON
+      let cleaned = text.trim();
+      
+      // Remove markdown wrappers if present
+      cleaned = cleaned.replace(/^```json\n?|```$/g, '').trim();
+
+      // Find the main JSON structure (first { or [ until the last } or ])
+      const startObj = cleaned.indexOf('{');
+      const startArr = cleaned.indexOf('[');
+      const start = (startObj !== -1 && (startArr === -1 || startObj < startArr)) ? startObj : startArr;
+      
+      const endObj = cleaned.lastIndexOf('}');
+      const endArr = cleaned.lastIndexOf(']');
+      const end = (endObj !== -1 && (endArr === -1 || endObj > endArr)) ? endObj : endArr;
+
+      if (start !== -1 && end !== -1 && end > start) {
+        cleaned = cleaned.substring(start, end + 1);
+      }
+
+      // Handle common AI mistakes: trailing commas before closing braces/brackets
+      cleaned = cleaned.replace(/,\s*([\}\]])/g, '$1');
+
+      try {
+        return JSON.parse(cleaned);
+      } catch (parseError: any) {
+        // Final attempt: if it's truncated, try to close it (basic fix)
+        if (parseError.message.includes('Unexpected end of JSON input')) {
+          if (cleaned.startsWith('{') && !cleaned.endsWith('}')) cleaned += '}';
+          if (cleaned.startsWith('[') && !cleaned.endsWith(']')) cleaned += ']';
+          return JSON.parse(cleaned);
+        }
+        throw parseError;
+      }
+    } catch (e) {
+      console.error('Extract JSON Error:', e);
+      return null;
     }
   }
 }

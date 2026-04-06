@@ -2,6 +2,7 @@ import {
   collection, 
   getDocs, 
   getDoc, 
+  setDoc,
   doc, 
   addDoc, 
   updateDoc, 
@@ -14,6 +15,8 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
+
+const AI_BACKEND_URL = import.meta.env.VITE_AI_BACKEND_URL || 'http://localhost:3001/api';
 
 // Helper for Firestore data mapping
 const mapDoc = (doc: any) => ({ id: doc.id, ...doc.data() });
@@ -198,6 +201,15 @@ export const borrowApi = {
     return { data: true };
   },
 
+  payFine: async (borrowId: string) => {
+    if (!db) throw new Error('Firestore not initialized');
+    await updateDoc(doc(db, 'borrows', borrowId), {
+      finePaid: true,
+      finePaidAt: serverTimestamp()
+    });
+    return { data: true };
+  },
+
   getOverdue: async () => {
     if (!db) throw new Error('Firestore not initialized');
     const today = new Date().toISOString();
@@ -266,12 +278,93 @@ export const membersApi = {
   }
 };
 
+// Notifications API (Backend-driven)
 export const notificationsApi = {
-  getAll: async () => ({ data: [] }),
+  getAll: async (studentId?: string) => {
+    const id = studentId || auth.currentUser?.uid;
+    if (!id) return { data: [] };
+    const response = await fetch(`${AI_BACKEND_URL}/notifications?studentId=${id}`);
+    if (!response.ok) throw new Error('Failed to fetch notifications');
+    return await response.json();
+  },
+
+  markRead: async (id: string) => {
+    const response = await fetch(`${AI_BACKEND_URL}/notifications/${id}/read`, {
+      method: 'PUT',
+    });
+    if (!response.ok) throw new Error('Failed to mark notification as read');
+    return await response.json();
+  },
+
+  markAllRead: async (studentId?: string) => {
+    const id = studentId || auth.currentUser?.uid;
+    if (!id) return { success: false };
+    const response = await fetch(`${AI_BACKEND_URL}/notifications/mark-all-read`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId: id })
+    });
+    if (!response.ok) throw new Error('Failed to mark all as read');
+    return await response.json();
+  },
+
+  scanOverdue: async () => {
+    const response = await fetch(`${AI_BACKEND_URL}/notifications/scan-overdue`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to trigger overdue scan');
+    return await response.json();
+  },
+
+  // Legacy stubs for compatibility with useNotifications hook if needed
+  sendReminder: async (borrowId: string) => {
+     // This can be kept as a placeholder or connected to scanOverdue
+     return { success: true };
+  },
+  
+  sendBulkReminders: async () => {
+     return notificationsApi.scanOverdue();
+  },
+
+  sendSingleReminder: async (data: { studentId: string; bookTitle: string; dueDate: string }) => {
+    const response = await fetch(`${AI_BACKEND_URL}/notifications/send-single-reminder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Failed to send individual reminder');
+    return await response.json();
+  }
 };
 
 export const settingsApi = {
-  get: async () => ({ data: {} }),
+  get: async () => {
+    if (!db) throw new Error('Firestore not initialized');
+    const docRef = doc(db, 'settings', 'library_settings');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { data: snap.data() };
+    }
+    // Default settings if none exist
+    return { 
+      data: {
+        libraryName: 'Central University Library',
+        timings: '9:00 AM - 8:00 PM (Mon-Sat)',
+        contact: 'library@university.edu | +91 1234567890',
+        rules: 'Books must be returned within the due date. Fines will be charged for late returns.',
+        finePerDay: 5,
+        maxBorrowDays: 14,
+        maxBooksPerStudent: 3,
+      } 
+    };
+  },
+  
+  update: async (data: Record<string, any>) => {
+    if (!db) throw new Error('Firestore not initialized');
+    const docRef = doc(db, 'settings', 'library_settings');
+    await setDoc(docRef, { ...data, updatedAt: serverTimestamp() }, { merge: true });
+    return { data: true };
+  }
 };
 
 export const dashboardApi = {
@@ -473,6 +566,47 @@ export const goalsApi = {
       createdAt: serverTimestamp(),
     });
     return { data: { id: res.id, ...data } };
+  }
+};
+
+// Alerts API (Firestore)
+export const alertsApi = {
+  get: async (userId: string) => {
+    if (!db) throw new Error('Firestore not initialized');
+    const q = query(collection(db, 'alerts'), where('userId', '==', userId));
+    const snap = await getDocs(q);
+    const alerts = snap.docs.map(mapDoc);
+
+    // Populate book info
+    const detailed = await Promise.all(alerts.map(async (alert) => {
+      const bookSnap = await getDoc(doc(db, 'books', alert.bookId));
+      return { ...alert, book: bookSnap.exists() ? bookSnap.data() : { title: 'Unknown' } };
+    }));
+
+    return { data: detailed };
+  },
+
+  create: async (userId: string, bookId: string) => {
+    if (!db) throw new Error('Firestore not initialized');
+    
+    // Check if alert already exists
+    const q = query(collection(db, 'alerts'), where('userId', '==', userId), where('bookId', '==', bookId));
+    const snap = await getDocs(q);
+    if (!snap.empty) return { data: mapDoc(snap.docs[0]) };
+
+    const res = await addDoc(collection(db, 'alerts'), {
+      userId,
+      bookId,
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
+    return { data: { id: res.id, userId, bookId, status: 'pending' } };
+  },
+
+  remove: async (id: string) => {
+    if (!db) throw new Error('Firestore not initialized');
+    await deleteDoc(doc(db, 'alerts', id));
+    return { data: true };
   }
 };
 

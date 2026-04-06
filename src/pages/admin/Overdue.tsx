@@ -4,13 +4,15 @@ import LibButton from '@/components/ui/LibButton';
 import LibCard from '@/components/ui/LibCard';
 import LibTable from '@/components/ui/LibTable';
 import PageHeader from '@/components/layout/PageHeader';
+import aiBackend from '@/services/aiBackend';
 import { formatDate, getDaysOverdue, calculateFine } from '@/utils/helpers';
 import toast from 'react-hot-toast';
 import type { Column } from '@/components/ui/LibTable';
-import { borrowApi } from '@/services/api';
+import { borrowApi, settingsApi, notificationsApi } from '@/services/api';
 
 interface OverdueRecord {
   id: string;
+  studentId: string;
   studentName: string;
   bookTitle: string;
   dueDate: string;
@@ -22,16 +24,24 @@ const Overdue: React.FC = () => {
   const [filter, setFilter] = useState('All');
   const [overdueList, setOverdueList] = useState<OverdueRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [remindingId, setRemindingId] = useState<string | null>(null);
+  const [finePerDay, setFinePerDay] = useState(5);
 
   useEffect(() => {
-    fetchOverdue();
+    fetchInitialData();
   }, []);
 
-  const fetchOverdue = async () => {
+  const fetchInitialData = async () => {
     try {
       setLoading(true);
-      const { data } = await borrowApi.getOverdue();
-      setOverdueList(data as any);
+      const [{ data: overdueData }, { data: settings }] = await Promise.all([
+        borrowApi.getOverdue(),
+        settingsApi.get()
+      ]);
+      setOverdueList(overdueData as any);
+      if (settings?.finePerDay) {
+        setFinePerDay(Number(settings.finePerDay));
+      }
     } catch (error) {
       toast.error('Failed to load overdue records');
       console.error(error);
@@ -48,6 +58,54 @@ const Overdue: React.FC = () => {
     return true;
   });
 
+  const handleRemind = async (record: OverdueRecord) => {
+    setRemindingId(record.id);
+    try {
+      await notificationsApi.sendSingleReminder({
+        studentId: record.studentId,
+        bookTitle: record.bookTitle,
+        dueDate: record.dueDate
+      });
+      
+      toast.success(`Reminder & Email sent to ${record.studentName}`);
+    } catch (err) {
+      console.error('Remind error:', err);
+      toast.error('Failed to send reminder');
+    } finally {
+      setRemindingId(null);
+    }
+  };
+
+  const handleRemindAll = async () => {
+    if (filtered.length === 0) return;
+    
+    setLoading(true);
+    try {
+      await Promise.all(filtered.slice(0, 5).map(r => handleRemind(r)));
+      toast.success(`Bulk AI reminders dispatched to ${Math.min(filtered.length, 5)} students!`);
+    } catch (err) {
+      console.error('Bulk remind error:', err);
+      toast.error('Failed to dispatch bulk reminders');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAISweep = async () => {
+    setLoading(true);
+    try {
+      const response = await notificationsApi.scanOverdue();
+      toast.success('AI Alert Sweep completed: System-wide alerts synced and emails sent');
+      console.log('Sweep results:', response);
+      await fetchInitialData(); // Refresh UI
+    } catch (err) {
+      console.error('AI Sweep error:', err);
+      toast.error('AI Alert Sweep failed to complete');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const columns: Column<OverdueRecord>[] = [
     { key: 'studentName', header: 'Student' },
     { key: 'bookTitle', header: 'Book' },
@@ -60,13 +118,19 @@ const Overdue: React.FC = () => {
     { 
       key: 'fine', 
       header: 'Fine', 
-      render: (r) => <span className="text-destructive font-medium">₹{calculateFine(r.dueDate)}</span> 
+      render: (r) => <span className="text-destructive font-medium">₹{calculateFine(r.dueDate, finePerDay)}</span> 
     },
     {
       key: 'actions',
       header: 'Actions',
       render: (r) => (
-        <LibButton size="sm" variant="secondary" onClick={() => toast.success(`Reminder sent to ${r.studentName}`)}>
+        <LibButton 
+          size="sm" 
+          variant="secondary" 
+          onClick={() => handleRemind(r)}
+          loading={remindingId === r.id}
+          disabled={!!remindingId}
+        >
           <Send className="h-3 w-3 mr-1" /> Remind
         </LibButton>
       ),
@@ -79,9 +143,24 @@ const Overdue: React.FC = () => {
         title="Overdue Books"
         description="Track and manage overdue books"
         action={
-          <LibButton onClick={() => toast.success('Bulk reminders sent!')} disabled={overdueList.length === 0}>
-            <Send className="h-4 w-4 mr-2" /> Send All Reminders
-          </LibButton>
+          <div className="flex gap-2">
+            <LibButton 
+              onClick={handleAISweep} 
+              variant="ghost" 
+              className="border border-accent text-accent hover:bg-accent/10"
+              loading={loading && !overdueList.length}
+              disabled={loading}
+            >
+              <AlertTriangle className="h-4 w-4 mr-2" /> AI Alert Sweep
+            </LibButton>
+            <LibButton 
+              onClick={handleRemindAll} 
+              disabled={overdueList.length === 0 || loading}
+              loading={loading && overdueList.length > 0}
+            >
+              <Send className="h-4 w-4 mr-2" /> Send All Reminders
+            </LibButton>
+          </div>
         }
       />
 

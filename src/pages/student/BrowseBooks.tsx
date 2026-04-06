@@ -8,6 +8,7 @@ import Pagination from '@/components/ui/Pagination';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/layout/PageHeader';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { CardSkeleton } from '@/components/ui/Skeleton';
 import { formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/context/AuthContext';
@@ -90,7 +91,11 @@ const BrowseBooks: React.FC = () => {
       toast.success(`Heard: "${transcript}"`, { id: 'voice-search' });
       
       try {
-        const result = await processVoiceQuery(transcript);
+        const result = await processVoiceQuery(transcript, {
+          userId: user?.uid,
+          userEmail: user?.email,
+          subType: 'voice_browse'
+        });
         
         // Update history
         const newHistory = [transcript, ...voiceHistory.slice(0, 4)];
@@ -291,7 +296,7 @@ const BrowseBooks: React.FC = () => {
           {isLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
-                <div key={i} className="h-64 bg-secondary/50 animate-pulse rounded-lg" />
+                <CardSkeleton key={i} />
               ))}
             </div>
           ) : filtered.length === 0 ? (

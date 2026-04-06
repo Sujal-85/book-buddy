@@ -2,7 +2,7 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 
 export const Skeleton: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ className, ...props }) => (
-  <div className={cn('animate-pulse bg-secondary rounded', className)} {...props} />
+  <div className={cn('shimmer bg-slate-300 dark:bg-slate-800/80 rounded-lg relative overflow-hidden', className)} {...props} />
 );
 
 export const TableSkeleton: React.FC<{ rows?: number; cols?: number }> = ({ rows = 5, cols = 5 }) => (
@@ -23,18 +23,26 @@ export const TableSkeleton: React.FC<{ rows?: number; cols?: number }> = ({ rows
 );
 
 export const CardSkeleton: React.FC = () => (
-  <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-    <Skeleton className="h-40 w-full rounded" />
-    <Skeleton className="h-4 w-3/4" />
-    <Skeleton className="h-3 w-1/2" />
-    <Skeleton className="h-8 w-full" />
+  <div className="bg-card/50 border border-border/50 rounded-2xl p-5 space-y-4 shadow-sm animate-in fade-in duration-500">
+    <Skeleton className="h-48 w-full rounded-xl" />
+    <div className="space-y-2">
+      <Skeleton className="h-5 w-3/4" />
+      <Skeleton className="h-4 w-1/2 opacity-70" />
+    </div>
+    <div className="pt-2">
+      <Skeleton className="h-10 w-full rounded-xl" />
+    </div>
   </div>
 );
 
 export const StatSkeleton: React.FC = () => (
-  <div className="bg-card border border-border rounded-lg p-4 space-y-2">
-    <Skeleton className="h-4 w-1/3" />
-    <Skeleton className="h-8 w-1/2" />
-    <Skeleton className="h-3 w-2/3" />
+  <div className="bg-card/50 border border-border/50 rounded-2xl p-5 space-y-3 shadow-sm">
+    <div className="flex items-center gap-4">
+      <Skeleton className="size-12 rounded-xl" />
+      <div className="flex-1 space-y-2">
+        <Skeleton className="h-6 w-1/2" />
+        <Skeleton className="h-4 w-1/3 opacity-70" />
+      </div>
+    </div>
   </div>
 );

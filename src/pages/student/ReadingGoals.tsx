@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Target, Trophy, Flame, BookOpen, CheckCircle, Plus, Loader2, X } from 'lucide-react';
+import { Target, Trophy, Flame, BookOpen, CheckCircle, Plus, Loader2, X, Sparkles, Brain } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import LibCard from '@/components/ui/LibCard';
 import LibButton from '@/components/ui/LibButton';
@@ -8,12 +8,15 @@ import toast from 'react-hot-toast';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { goalsApi } from '@/services/api';
+import { suggestReadingGoals } from '@/services/aiBackend';
 
 const ReadingGoals: React.FC = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [newGoal, setNewGoal] = useState({ title: '', target: 5, category: 'General' });
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
 
   const { data: goalsData, isLoading: isGoalsLoading } = useQuery({
     queryKey: ['reading-goals', user?.uid],
@@ -69,17 +72,62 @@ const ReadingGoals: React.FC = () => {
     return achievementsData?.data?.length ? achievementsData.data : defaultAchievements;
   }, [completedBooks, history, achievementsData]);
 
-  const handleCreateGoal = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newGoal.title) return toast.error('Please enter a goal title');
-    createGoalMutation.mutate({
+  const handleCreateGoal = (e?: React.FormEvent, manualGoal?: any) => {
+    if (e) e.preventDefault();
+    const goalToCreate = manualGoal || {
       title: newGoal.title,
       target: Number(newGoal.target),
       progress: 0,
       category: newGoal.category,
-      deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days default
+      deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      status: 'active'
+    };
+
+    if (!goalToCreate.title) return toast.error('Please enter a goal title');
+    
+    createGoalMutation.mutate(goalToCreate);
+  };
+
+  const handleAISuggest = async () => {
+    if (!user) return;
+    setIsSuggesting(true);
+    try {
+      const studentData = {
+        id: user.uid,
+        name: user.name,
+        history: history.map((b: any) => ({
+          title: b.book?.title,
+          category: b.book?.category,
+          status: b.status
+        })),
+        completedCount: completedBooks
+      };
+
+      const suggestions = await suggestReadingGoals(studentData, {
+        userId: user.uid,
+        userEmail: user.email,
+        subType: 'goal_discovery'
+      });
+      setAiSuggestions(suggestions);
+      toast.success('AI Goal Assistant: Recommendations ready!');
+    } catch (err) {
+      console.error('AI suggest error:', err);
+      toast.error('Failed to get suggestions');
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
+
+  const adoptGoal = (suggestion: any) => {
+    handleCreateGoal(undefined, {
+      title: suggestion.title,
+      target: suggestion.target,
+      progress: 0,
+      category: suggestion.category || 'General',
+      deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       status: 'active'
     });
+    setAiSuggestions(prev => prev.filter(s => s.title !== suggestion.title));
   };
 
   if (isGoalsLoading) {
@@ -123,15 +171,60 @@ const ReadingGoals: React.FC = () => {
               <Target className="h-4 w-4 text-accent" />
               Active Goals
             </h3>
-            <LibButton 
-              size="sm" 
-              variant={showGoalForm ? 'ghost' : 'secondary'} 
-              className="h-8 text-[10px]" 
-              onClick={() => setShowGoalForm(!showGoalForm)}
-            >
-              {showGoalForm ? 'Cancel' : '+ Set New Goal'}
-            </LibButton>
+            <div className="flex gap-2">
+              <LibButton 
+                size="sm" 
+                variant="ghost"
+                className="h-8 text-[10px] gap-2 text-accent border-accent/20 hover:bg-accent/5" 
+                onClick={handleAISuggest}
+                disabled={isSuggesting}
+              >
+                {isSuggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                AI Suggestions
+              </LibButton>
+              <LibButton 
+                size="sm" 
+                variant={showGoalForm ? 'ghost' : 'secondary'} 
+                className="h-8 text-[10px]" 
+                onClick={() => setShowGoalForm(!showGoalForm)}
+              >
+                {showGoalForm ? 'Cancel' : '+ Set New Goal'}
+              </LibButton>
+            </div>
           </div>
+
+          {aiSuggestions.length > 0 && (
+            <div className="mb-8 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
+              <div className="flex items-center justify-between px-1">
+                <p className="text-[10px] font-black text-accent uppercase tracking-[0.2em] flex items-center gap-2">
+                  <Brain className="h-3 w-3" /> Recommended by AI Assistant
+                </p>
+                <button onClick={() => setAiSuggestions([])} className="text-[10px] text-muted-foreground hover:text-foreground">Dismiss</button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {aiSuggestions.map((s, i) => (
+                  <LibCard key={i} className="p-4 border-accent/30 bg-accent/5 flex flex-col justify-between group hover:scale-[1.02] transition-all">
+                    <div>
+                      <div className="flex items-start justify-between mb-2">
+                        <LibBadge variant="default" className="text-[8px] uppercase tracking-tighter border-accent/20 text-accent bg-accent/5">{s.difficulty || 'Personalized'}</LibBadge>
+                        <span className="text-[10px] font-black text-foreground/40">{s.target} Books</span>
+                      </div>
+                      <h4 className="text-xs font-bold text-foreground mb-1 group-hover:text-accent transition-colors">{s.title}</h4>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-2">{s.description}</p>
+                    </div>
+                    <LibButton 
+                      size="sm" 
+                      variant="ghost" 
+                      className="mt-3 h-7 text-[10px] w-full border-accent/20 hover:bg-accent hover:text-white"
+                      onClick={() => adoptGoal(s)}
+                    >
+                      Adopt Goal
+                    </LibButton>
+                  </LibCard>
+                ))}
+              </div>
+            </div>
+          )}
 
           {showGoalForm && (
             <LibCard className="mb-6 border-accent/30 bg-accent/5 animate-in slide-in-from-top-2 duration-300">
