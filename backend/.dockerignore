@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+.env
+dist
+.firebase
+firebase.json
+.git
+.gitignore
+README.md
+tests
