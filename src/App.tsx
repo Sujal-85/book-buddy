@@ -115,7 +115,7 @@ const App = () => (
               <Route path="qr-borrow" element={<QRBorrow />} />
               <Route path="stats" element={<ReadingStats />} />
               <Route path="alerts" element={<AvailabilityAlerts />} />
-              <Route path="summary" element={<AISummary />} />
+              <Route path="ai-summary" element={<AISummary />} />
             </Route>
 
             {/* Landing page */}
