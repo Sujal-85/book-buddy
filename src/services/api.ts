@@ -114,6 +114,23 @@ export const borrowApi = {
   issue: async (data: { studentId: string; bookId: string; dueDate: string }) => {
     if (!db) throw new Error('Firestore not initialized');
     
+    // Check max books per student limit
+    const settingsRef = doc(db, 'settings', 'library_settings');
+    const settingsSnap = await getDoc(settingsRef);
+    const maxBooksPerStudent = settingsSnap.exists() ? (settingsSnap.data().maxBooksPerStudent || 3) : 3;
+    
+    // Count student's active borrows
+    const borrowsQuery = query(
+      collection(db, 'borrows'), 
+      where('studentId', '==', data.studentId),
+      where('status', '==', 'active')
+    );
+    const borrowsSnap = await getDocs(borrowsQuery);
+    
+    if (borrowsSnap.size >= maxBooksPerStudent) {
+      throw new Error(`Student has reached the maximum limit of ${maxBooksPerStudent} books`);
+    }
+    
     // 1. Create borrow record
     const borrowRef = await addDoc(collection(db, 'borrows'), {
       ...data,

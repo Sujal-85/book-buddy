@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, Calendar, CheckCircle, BookOpen } from 'lucide-react';
+import { Search, Calendar, CheckCircle, BookOpen, QrCode, Camera, X } from 'lucide-react';
 import LibButton from '@/components/ui/LibButton';
 import LibCard from '@/components/ui/LibCard';
 import LibInput from '@/components/ui/LibInput';
 import LibBadge from '@/components/ui/LibBadge';
 import PageHeader from '@/components/layout/PageHeader';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import toast from 'react-hot-toast';
 import { fetchBookByISBN, searchBooks, GoogleBookItem } from '@/lib/googleBooks';
-import { membersApi, booksApi, borrowApi } from '@/services/api';
+import { membersApi, booksApi, borrowApi, settingsApi } from '@/services/api';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 
 // Demo data removed for real implementation
 
@@ -26,13 +28,59 @@ const IssueBook: React.FC = () => {
   
   const [isSearchingExternal, setIsSearchingExternal] = useState(false);
   const [externalBooks, setExternalBooks] = useState<GoogleBookItem[]>([]);
-  const [dueDate, setDueDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 14);
-    return d.toISOString().split('T')[0];
+  const [dueDate, setDueDate] = useState('');
+  const [borrowSettings, setBorrowSettings] = useState({
+    maxBorrowDays: 14,
+    maxBooksPerStudent: 3,
+    finePerDay: 5
   });
+  const [studentBorrowCount, setStudentBorrowCount] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  
+  // QR Scanner states
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+
+  // Load borrow settings
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const { data: settings } = await settingsApi.get();
+        setBorrowSettings({
+          maxBorrowDays: settings.maxBorrowDays || 14,
+          maxBooksPerStudent: settings.maxBooksPerStudent || 3,
+          finePerDay: settings.finePerDay || 5
+        });
+        // Set default due date based on settings
+        const d = new Date();
+        d.setDate(d.getDate() + (settings.maxBorrowDays || 14));
+        setDueDate(d.toISOString().split('T')[0]);
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  // Fetch student's current borrow count when student is selected
+  useEffect(() => {
+    if (selectedStudent?.id) {
+      const fetchStudentBorrows = async () => {
+        try {
+          const { data: borrows } = await borrowApi.getStudentBorrows(selectedStudent.id);
+          const activeBorrows = borrows.filter((b: any) => b.status === 'active');
+          setStudentBorrowCount(activeBorrows.length);
+        } catch (err) {
+          console.error('Failed to fetch student borrows:', err);
+        }
+      };
+      fetchStudentBorrows();
+    } else {
+      setStudentBorrowCount(0);
+    }
+  }, [selectedStudent]);
 
   // Load book from navigation state if present
   useEffect(() => {
@@ -103,6 +151,94 @@ const IssueBook: React.FC = () => {
 
   // Removed as we use actual state for search results
 
+  // QR Scanner functions
+  useEffect(() => {
+    if (showQRScanner && !scannerRef.current) {
+      // Small delay to ensure DOM element is rendered
+      const initTimer = setTimeout(() => {
+        const element = document.getElementById("admin-qr-reader");
+        if (!element) {
+          console.error("QR Scanner element not found");
+          return;
+        }
+
+        scannerRef.current = new Html5QrcodeScanner(
+          "admin-qr-reader",
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          false
+        );
+
+        scannerRef.current.render(onScanSuccess, onScanFailure);
+        setIsScanning(true);
+      }, 300);
+
+      return () => clearTimeout(initTimer);
+    }
+
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(err => console.error("Failed to clear scanner", err));
+        scannerRef.current = null;
+        setIsScanning(false);
+      }
+    };
+  }, [showQRScanner]);
+
+  async function onScanSuccess(decodedText: string) {
+    // Stop scanning
+    setShowQRScanner(false);
+    setIsScanning(false);
+    
+    // Process QR code data
+    // Format: BOOK_ID:<id> or ISBN:<isbn> or just ID/ISBN
+    let bookId = decodedText;
+    if (decodedText.startsWith('BOOK_ID:')) {
+      bookId = decodedText.replace('BOOK_ID:', '');
+    } else if (decodedText.startsWith('ISBN:')) {
+      bookId = decodedText.replace('ISBN:', '');
+    }
+
+    toast.success(`QR Code scanned: ${bookId}`);
+
+    try {
+      // Try to find book by ID first
+      const { data: book } = await booksApi.getById(bookId);
+      if (book) {
+        if (book.available) {
+          setSelectedBook(book);
+          toast.success(`Book found: ${book.title}`);
+        } else {
+          toast.error(`"${book.title}" is not available for issuing`);
+        }
+        return;
+      }
+    } catch (err) {
+      // Book not found by ID, try searching by ISBN
+      console.log('Book not found by ID, trying ISBN search...');
+    }
+
+    // Try searching by ISBN
+    try {
+      const { data: books } = await booksApi.getAll({ search: bookId });
+      const availableBook = books.find((b: any) => b.available);
+      
+      if (availableBook) {
+        setSelectedBook(availableBook);
+        toast.success(`Book found: ${availableBook.title}`);
+      } else if (books.length > 0) {
+        toast.error(`"${books[0].title}" is not available for issuing`);
+      } else {
+        toast.error('Book not found in library. Please add it first.');
+      }
+    } catch (err) {
+      toast.error('Failed to look up book from QR code');
+    }
+  }
+
+  function onScanFailure(error: any) {
+    // Silently fail - continuous scanning
+  }
+
   const handleExternalSearch = async () => {
     if (!bookSearch.trim()) return;
     setIsSearchingExternal(true);
@@ -131,6 +267,13 @@ const IssueBook: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!selectedStudent || !selectedBook) return;
+    
+    // Check max books limit
+    if (studentBorrowCount >= borrowSettings.maxBooksPerStudent) {
+      toast.error(`Student has reached the maximum limit of ${borrowSettings.maxBooksPerStudent} books`);
+      return;
+    }
+    
     setIsSubmitting(true);
     try {
       await borrowApi.issue({
@@ -178,6 +321,10 @@ const IssueBook: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-foreground">{selectedStudent.name}</p>
                 <p className="text-xs text-muted-foreground">{selectedStudent.id}</p>
+                <p className={`text-xs mt-1 ${studentBorrowCount >= borrowSettings.maxBooksPerStudent ? 'text-red-500 font-semibold' : 'text-muted-foreground'}`}>
+                  Books borrowed: {studentBorrowCount} / {borrowSettings.maxBooksPerStudent}
+                  {studentBorrowCount >= borrowSettings.maxBooksPerStudent && ' (Limit reached)'}
+                </p>
               </div>
               <LibButton variant="ghost" size="sm" onClick={() => setSelectedStudent(null)}>Change</LibButton>
             </div>
@@ -211,7 +358,20 @@ const IssueBook: React.FC = () => {
 
         {/* Step 2: Select Book */}
         <LibCard>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Step 2: Select Book</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-foreground">Step 2: Select Book</h3>
+            {!selectedBook && (
+              <LibButton 
+                variant="secondary" 
+                size="sm" 
+                onClick={() => setShowQRScanner(true)}
+                className="flex items-center gap-2"
+              >
+                <QrCode className="h-4 w-4" />
+                Scan QR
+              </LibButton>
+            )}
+          </div>
           {selectedBook ? (
             <div className="flex items-center justify-between p-3 bg-secondary rounded-md gap-3">
               <div className="flex items-center gap-3 overflow-hidden">
@@ -315,23 +475,64 @@ const IssueBook: React.FC = () => {
 
         {/* Step 3: Due Date */}
         <LibCard>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Step 3: Set Due Date</h3>
-          <LibInput type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-foreground">Step 3: Set Due Date</h3>
+            <span className="text-xs text-muted-foreground">
+              Max: {borrowSettings.maxBorrowDays} days
+            </span>
+          </div>
+          <LibInput 
+            type="date" 
+            value={dueDate} 
+            onChange={(e) => setDueDate(e.target.value)} 
+            min={new Date().toISOString().split('T')[0]}
+          />
         </LibCard>
 
         {/* Step 4: Confirm */}
         <LibButton
           className="w-full"
-          disabled={!selectedStudent || !selectedBook || isSubmitting}
+          disabled={!selectedStudent || !selectedBook || isSubmitting || studentBorrowCount >= borrowSettings.maxBooksPerStudent}
           onClick={handleSubmit}
         >
           {isSubmitting ? (
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+          ) : studentBorrowCount >= borrowSettings.maxBooksPerStudent ? (
+            'Max Books Limit Reached'
           ) : (
             <><Calendar className="h-4 w-4 mr-2" /> Confirm & Issue Book</>
           )}
         </LibButton>
       </div>
+
+      {/* QR Scanner Dialog */}
+      <Dialog open={showQRScanner} onOpenChange={setShowQRScanner}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Camera className="h-5 w-5" />
+              Scan Book QR Code
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div id="admin-qr-reader" className="w-full min-h-[300px] bg-black rounded-lg overflow-hidden" />
+            <p className="text-xs text-muted-foreground text-center">
+              Position the book's QR code within the camera frame to scan
+            </p>
+            <div className="flex justify-center gap-2">
+              <LibButton 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setShowQRScanner(false)}
+                className="flex items-center gap-2"
+              >
+                <X className="h-4 w-4" />
+                Cancel
+              </LibButton>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

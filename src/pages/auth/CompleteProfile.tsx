@@ -6,12 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'react-hot-toast';
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useNavigate } from 'react-router-dom';
-import type { ConfirmationResult } from 'firebase/auth';
+import { CheckCircle2 } from 'lucide-react';
 
 const CompleteProfile = () => {
-  const { user, updateUserProfile, sendPhoneOtp, verifyPhoneOtp } = useAuth();
+  const { user, updateUserProfile, checkPhoneExists } = useAuth();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     college: '',
@@ -20,50 +19,53 @@ const CompleteProfile = () => {
     phone: '',
   });
   
-  const [otpSent, setOtpSent] = useState(false);
-  const [otp, setOtp] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [phoneValidated, setPhoneValidated] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
   const navigate = useNavigate();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    // Reset validation if phone changes
+    if (e.target.name === 'phone') {
+      setPhoneValidated(false);
+      setPhoneError('');
+    }
   };
 
   const handleSelectChange = (name: string, value: string) => {
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleSendOtp = async () => {
+  const validatePhone = async () => {
     if (!formData.phone || formData.phone.length < 10) {
+      setPhoneError("Please enter a valid 10-digit phone number (e.g. 9876543210)");
       toast.error("Please enter a valid 10-digit phone number (e.g. 9876543210)");
       return;
     }
     
-    setLoading(true);
-    try {
-      const result = await sendPhoneOtp(formData.phone, 'recaptcha-container');
-      setConfirmationResult(result);
-      setOtpSent(true);
-      toast.success("OTP sent successfully!");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to send OTP. Check console for details.");
-      console.error(error);
-    } finally {
-      setLoading(false);
+    // Validate phone format (10 digits)
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(formData.phone.replace(/\D/g, ''))) {
+      setPhoneError("Please enter a valid 10-digit phone number");
+      toast.error("Please enter a valid 10-digit phone number");
+      return;
     }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (!confirmationResult || !otp) return;
     
     setLoading(true);
+    setPhoneError('');
     try {
-      await verifyPhoneOtp(confirmationResult, otp);
-      toast.success("Phone verified successfully!");
-      // Proceed to update profile
-      handleSubmit();
+      // Check if phone number already exists
+      const exists = await checkPhoneExists(formData.phone);
+      if (exists) {
+        setPhoneError("This phone number is already registered. Please use a different number.");
+        toast.error("This phone number is already registered. Please use a different number.");
+        setPhoneValidated(false);
+      } else {
+        setPhoneValidated(true);
+        toast.success("Phone number validated!");
+      }
     } catch (error: any) {
-      toast.error("Invalid OTP. Please try again.");
+      toast.error(error.message || "Failed to validate phone number");
     } finally {
       setLoading(false);
     }
@@ -72,6 +74,11 @@ const CompleteProfile = () => {
 const handleSubmit = async () => {
     if (!formData.college || !formData.branch || !formData.year) {
       toast.error("Please fill all fields");
+      return;
+    }
+    
+    if (!phoneValidated) {
+      toast.error("Please validate your phone number first");
       return;
     }
 
@@ -118,14 +125,13 @@ const handleSubmit = async () => {
               placeholder="e.g. FAMT" 
               value={formData.college} 
               onChange={handleInputChange} 
-              disabled={otpSent}
             />
           </div>
           
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Branch</Label>
-              <Select onValueChange={(v) => handleSelectChange('branch', v)} disabled={otpSent}>
+              <Select onValueChange={(v) => handleSelectChange('branch', v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select Branch" />
                 </SelectTrigger>
@@ -142,7 +148,7 @@ const handleSubmit = async () => {
             
             <div className="space-y-2">
               <Label>Year</Label>
-              <Select onValueChange={(v) => handleSelectChange('year', v)} disabled={otpSent}>
+              <Select onValueChange={(v) => handleSelectChange('year', v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select Year" />
                 </SelectTrigger>
@@ -159,53 +165,37 @@ const handleSubmit = async () => {
           <div className="space-y-2">
             <Label htmlFor="phone">Phone Number</Label>
             <div className="flex gap-2">
-              <Input 
-                id="phone" 
-                name="phone" 
-                placeholder="9876543210" 
-                value={formData.phone} 
-                onChange={handleInputChange} 
-                disabled={otpSent}
-              />
-              {!otpSent && (
-                <Button variant="outline" onClick={handleSendOtp} disabled={loading}>
-                  Verify
+              <div className="relative flex-1">
+                <Input 
+                  id="phone" 
+                  name="phone" 
+                  placeholder="9876543210" 
+                  value={formData.phone} 
+                  onChange={handleInputChange} 
+                  disabled={phoneValidated}
+                  className={phoneError ? "border-red-500" : ""}
+                />
+                {phoneValidated && (
+                  <CheckCircle2 className="absolute right-3 top-2.5 h-4 w-4 text-green-500" />
+                )}
+              </div>
+              {!phoneValidated && (
+                <Button variant="outline" onClick={validatePhone} disabled={loading}>
+                  Validate
                 </Button>
               )}
             </div>
-            <div id="recaptcha-container"></div>
+            {phoneError && <p className="text-xs text-red-500">{phoneError}</p>}
           </div>
-
-          {otpSent && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-top-1">
-              <div className="space-y-2">
-                <Label>Enter OTP</Label>
-                <InputOTP maxLength={6} value={otp} onChange={setOtp}>
-                  <InputOTPGroup>
-                    <InputOTPSlot index={0} />
-                    <InputOTPSlot index={1} />
-                    <InputOTPSlot index={2} />
-                    <InputOTPSlot index={3} />
-                    <InputOTPSlot index={4} />
-                    <InputOTPSlot index={5} />
-                  </InputOTPGroup>
-                </InputOTP>
-              </div>
-              <Button className="w-full" onClick={handleVerifyOtp} disabled={loading}>
-                {loading ? "Verifying..." : "Verify & Save"}
-              </Button>
-              <Button variant="link" className="w-full text-xs" onClick={() => setOtpSent(false)} disabled={loading}>
-                Change Phone Number
-              </Button>
-            </div>
-          )}
         </CardContent>
         <CardFooter>
-          {!otpSent && (
-            <Button className="w-full" onClick={handleSubmit} disabled={loading}>
-              {loading ? "Saving..." : "Save Profile"}
-            </Button>
-          )}
+          <Button 
+            className="w-full" 
+            onClick={handleSubmit} 
+            disabled={loading || !phoneValidated}
+          >
+            {loading ? "Saving..." : (phoneValidated ? "Save Profile" : "Validate phone to proceed")}
+          </Button>
         </CardFooter>
       </Card>
     </div>

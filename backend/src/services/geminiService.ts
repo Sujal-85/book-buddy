@@ -17,7 +17,7 @@ export const MODELS = {
   PRO: 'gemini-2.5-flash',
   
   // Experimental/Latest cutting-edge performer
-  PRO_LATEST: 'gemini-3-pro-preview', 
+  PRO_LATEST: 'gemini-2.5-flash', 
 };
 
 class GeminiService {

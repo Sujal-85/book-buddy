@@ -41,6 +41,6 @@ export const studentLinks = [
   { to: '/student/qr-borrow', label: 'QR Borrow', icon: QrCode },
   { to: '/student/stats', label: 'Reading Stats', icon: TrendingUp },
   { to: '/student/alerts', label: 'Availability Alerts', icon: BellRing },
-  { to: '/student/summary', label: 'AI Summary', icon: FileSearch },
+  { to: '/student/ai-summary', label: 'AI Summary', icon: FileSearch },
   { to: '/student/profile', label: 'Profile', icon: User },
 ];

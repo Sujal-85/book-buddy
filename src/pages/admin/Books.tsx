@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { bookSchema, type BookFormData } from '@/utils/validators';
-import { Search, Plus, Edit2, Trash2, BookPlus, Database } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, BookPlus, Database, QrCode } from 'lucide-react';
 import LibButton from '@/components/ui/LibButton';
 import LibCard from '@/components/ui/LibCard';
 import LibBadge from '@/components/ui/LibBadge';
@@ -16,6 +16,7 @@ import type { Column } from '@/components/ui/LibTable';
 import { useBooks, useCreateBook, useUpdateBook, useDeleteBook } from '@/hooks/useBooks';
 import { fetchBookByISBN } from '@/lib/googleBooks';
 import { seedBooks } from '@/utils/seedBooks';
+import QRCodeComponent from '@/components/ui/QRCode';
 import toast from 'react-hot-toast';
 
 interface Book {
@@ -142,6 +143,7 @@ const AdminBooks: React.FC = () => {
         <div className="flex items-center gap-2">
           <button onClick={() => { setEditBook(b); setShowAddModal(true); }} className="p-1 hover:bg-secondary rounded text-muted-foreground"><Edit2 className="h-4 w-4" /></button>
           <button onClick={() => setDeleteBook(b)} className="p-1 hover:bg-secondary rounded text-destructive"><Trash2 className="h-4 w-4" /></button>
+          <QRCodeComponent bookId={b.id} isbn={b.isbn} title={b.title} size={150} />
           <LibButton 
             size="sm" 
             variant="secondary" 

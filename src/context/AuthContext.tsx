@@ -12,7 +12,7 @@ import {
   linkWithPhoneNumber,
   type ConfirmationResult
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, query, where, getDocs, collection } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '@/services/firebase';
 
 export type UserRole = 'admin' | 'student';
@@ -42,6 +42,7 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<AuthUser | null>;
   sendPhoneOtp: (phoneNumber: string, recaptchaContainerId: string) => Promise<ConfirmationResult>;
   verifyPhoneOtp: (confirmationResult: ConfirmationResult, otp: string) => Promise<void>;
+  checkPhoneExists: (phoneNumber: string) => Promise<boolean>;
   updateUserProfile: (details: Partial<AuthUser>) => Promise<void>;
   logout: () => Promise<void>;
   loginAsDemo: (role: UserRole) => void;
@@ -380,6 +381,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const checkPhoneExists = async (phoneNumber: string): Promise<boolean> => {
+    if (!db) throw new Error('Firebase not configured');
+    
+    // Normalize phone number format
+    let normalizedPhone = phoneNumber.replace(/[\s-]/g, '');
+    if (!normalizedPhone.startsWith('+')) {
+      normalizedPhone = `+91${normalizedPhone}`;
+    }
+    
+    // Check for exact match
+    const q = query(collection(db, 'users'), where('phone', '==', normalizedPhone));
+    const querySnapshot = await getDocs(q);
+    
+    if (!querySnapshot.empty) {
+      return true;
+    }
+    
+    // Also check without +91 prefix (in case stored differently)
+    const phoneWithoutPrefix = normalizedPhone.replace(/^\+91/, '');
+    const q2 = query(collection(db, 'users'), where('phone', '==', phoneWithoutPrefix));
+    const querySnapshot2 = await getDocs(q2);
+    
+    return !querySnapshot2.empty;
+  };
+
   const updateUserProfile = async (details: Partial<AuthUser>) => {
     if (!auth || !db || !auth.currentUser) throw new Error('Not authenticated');
     await setDoc(doc(db, 'users', auth.currentUser.uid), details, { merge: true });
@@ -422,7 +448,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{ 
       user, firebaseUser, loading, isDemo, needsProfileCompletion,
-      login, register, loginWithGoogle, sendPhoneOtp, verifyPhoneOtp, updateUserProfile, logout, loginAsDemo 
+      login, register, loginWithGoogle, sendPhoneOtp, verifyPhoneOtp, checkPhoneExists, updateUserProfile, logout, loginAsDemo 
     }}>
       {children}
     </AuthContext.Provider>

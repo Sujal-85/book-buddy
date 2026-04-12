@@ -8,15 +8,13 @@ import LibButton from '@/components/ui/LibButton';
 import LibInput from '@/components/ui/LibInput';
 import { BookOpen, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
-import type { ConfirmationResult } from 'firebase/auth';
 import { useEffect } from 'react';
 import { Controller } from 'react-hook-form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 
 const Register: React.FC = () => {
-  const { user, register: registerUser, sendPhoneOtp, verifyPhoneOtp, loginWithGoogle, needsProfileCompletion } = useAuth();
+  const { user, register: registerUser, checkPhoneExists, loginWithGoogle, needsProfileCompletion } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
@@ -30,10 +28,8 @@ const Register: React.FC = () => {
       }
     }
   }, [user, needsProfileCompletion, navigate]);
-  const [otpSent, setOtpSent] = useState(false);
-  const [phoneVerified, setPhoneVerified] = useState(false);
-  const [otp, setOtp] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [phoneValidated, setPhoneValidated] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
 
   const { register, handleSubmit, watch, control, formState: { errors } } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
@@ -41,43 +37,44 @@ const Register: React.FC = () => {
 
   const phoneValue = watch('phone');
 
-  const handleSendOtp = async () => {
+  const validatePhone = async () => {
     if (!phoneValue || phoneValue.length < 10) {
+      setPhoneError("Please enter a valid 10-digit phone number (e.g. 9876543210)");
       toast.error("Please enter a valid 10-digit phone number (e.g. 9876543210)");
       return;
     }
     
-    setLoading(true);
-    try {
-      const result = await sendPhoneOtp(`+91${phoneValue}`, 'recaptcha-container-reg');
-      setConfirmationResult(result);
-      setOtpSent(true);
-      toast.success("OTP sent!");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to send OTP");
-    } finally {
-      setLoading(false);
+    // Validate phone format (10 digits)
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phoneValue.replace(/\D/g, ''))) {
+      setPhoneError("Please enter a valid 10-digit phone number");
+      toast.error("Please enter a valid 10-digit phone number");
+      return;
     }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (!confirmationResult || !otp) return;
+    
     setLoading(true);
+    setPhoneError('');
     try {
-      await verifyPhoneOtp(confirmationResult, otp);
-      setPhoneVerified(true);
-      setOtpSent(false);
-      toast.success("Phone verified!");
+      // Check if phone number already exists
+      const exists = await checkPhoneExists(phoneValue);
+      if (exists) {
+        setPhoneError("This phone number is already registered. Please use a different number.");
+        toast.error("This phone number is already registered. Please use a different number.");
+        setPhoneValidated(false);
+      } else {
+        setPhoneValidated(true);
+        toast.success("Phone number validated!");
+      }
     } catch (error: any) {
-      toast.error("Invalid OTP");
+      toast.error(error.message || "Failed to validate phone number");
     } finally {
       setLoading(false);
     }
   };
 
   const onSubmit = async (data: RegisterFormData) => {
-    if (!phoneVerified) {
-      toast.error("Please verify your phone number first");
+    if (!phoneValidated) {
+      toast.error("Please validate your phone number first");
       return;
     }
 
@@ -165,49 +162,27 @@ const Register: React.FC = () => {
                     type="tel" 
                     placeholder="9876543210" 
                     {...register('phone')} 
-                    error={errors.phone?.message}
-                    disabled={phoneVerified || otpSent}
+                    error={errors.phone?.message || phoneError}
+                    disabled={phoneValidated}
                   />
-                  {phoneVerified && (
+                  {phoneValidated && (
                     <CheckCircle2 className="absolute right-3 top-2.5 h-4 w-4 text-green-500" />
                   )}
                 </div>
-                {!phoneVerified && !otpSent && (
+                {!phoneValidated && (
                   <LibButton 
                     type="button" 
                     variant="secondary" 
                     size="sm" 
-                    onClick={handleSendOtp} 
+                    onClick={validatePhone} 
                     loading={loading}
                     className="h-10"
                   >
-                    Verify
+                    Validate
                   </LibButton>
                 )}
               </div>
-              <div id="recaptcha-container-reg"></div>
             </div>
-
-            {otpSent && (
-              <div className="space-y-3 bg-muted/50 p-3 rounded-md border border-border animate-in fade-in slide-in-from-top-1">
-                <label className="text-xs font-medium uppercase text-muted-foreground">Verification Code</label>
-                <div className="flex justify-center">
-                  <InputOTP maxLength={6} value={otp} onChange={setOtp}>
-                    <InputOTPGroup>
-                      <InputOTPSlot index={0} />
-                      <InputOTPSlot index={1} />
-                      <InputOTPSlot index={2} />
-                      <InputOTPSlot index={3} />
-                      <InputOTPSlot index={4} />
-                      <InputOTPSlot index={5} />
-                    </InputOTPGroup>
-                  </InputOTP>
-                </div>
-                <LibButton type="button" className="w-full h-8 text-xs" onClick={handleVerifyOtp} loading={loading}>
-                  Confirm OTP
-                </LibButton>
-              </div>
-            )}
 
             <LibInput label="Password" type="password" placeholder="••••••••" {...register('password')} error={errors.password?.message} />
             <LibInput label="Confirm Password" type="password" placeholder="••••••••" {...register('confirmPassword')} error={errors.confirmPassword?.message} />
@@ -216,9 +191,9 @@ const Register: React.FC = () => {
               type="submit" 
               loading={loading} 
               className="w-full"
-              disabled={!phoneVerified}
+              disabled={!phoneValidated}
             >
-              {phoneVerified ? 'Create account' : 'Verify phone number to proceed'}
+              {phoneValidated ? 'Create account' : 'Validate phone number to proceed'}
             </LibButton>
           </form>
 
